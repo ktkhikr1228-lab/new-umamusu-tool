@@ -1,20 +1,8 @@
-# Python
 backend/__pycache__/
-*.pyc
-
-# Upload images
 backend/uploads/
 
-# Environment
-.env
-.env.*
-backend/.env*
-frontend/.env*
-
-# Next.js
 frontend/node_modules/
 frontend/.next/
 
-# OS
-.DS_Store
-Thumbs.db
+.env
+.env.*
