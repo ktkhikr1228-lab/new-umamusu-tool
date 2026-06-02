@@ -7,13 +7,12 @@ import { SkillList } from "../src/components/skill-list";
 import { RaceData, StrategyDetail, SupportCard } from "../src/lib/types";
 import { cn, getCardSkills, scoreCard } from "../src/lib/utils";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
-const STRATEGY_ORDER = ["逃げ", "先行", "差し", "追込"];
+// @ts-ignore
+import cardsData from "../src/data/cards.json";
+// @ts-ignore
+import raceDataRaw from "../src/data/race_data.json";
 
-const getApiUrl = () => {
-  if (API_BASE_URL) return API_BASE_URL.replace(/\/$/, "");
-  return `http://${window.location.hostname}:8000`;
-};
+const STRATEGY_ORDER = ["逃げ", "先行", "差し", "追込"];
 
 const emptyStrategyDetail: StrategyDetail = {
   super_recommended: [],
@@ -49,53 +48,13 @@ export default function Home() {
     : strategyOptions[0] || "";
 
   useEffect(() => {
-    async function initializeData() {
-      try {
-        const apiUrl = getApiUrl();
-        const [cardsRes, raceRes, deckRes] = await Promise.all([
-          fetch(`${apiUrl}/api/cards`),
-          fetch(`${apiUrl}/api/race-data`),
-          fetch(`${apiUrl}/api/deck`),
-        ]);
-
-        if (cardsRes.ok) {
-          const cardsData = (await cardsRes.json()) as { cards?: SupportCard[] };
-          setCards(cardsData.cards || []);
-        }
-
-        if (raceRes.ok) {
-          const nextRaceData = (await raceRes.json()) as RaceData;
-          setRaceData(nextRaceData);
-          setSelectedRace(Object.keys(nextRaceData)[0] || "");
-        }
-
-        if (deckRes.ok) {
-          const deckData = (await deckRes.json()) as { deck?: SupportCard[] };
-          setDeck(deckData.deck || []);
-        }
-      } catch (error) {
-        console.error("Failed to fetch initial data:", error);
-      }
-    }
-
-    initializeData();
+    setCards(cardsData as SupportCard[]);
+    setRaceData(raceDataRaw as unknown as RaceData);
+    setSelectedRace(Object.keys(raceDataRaw)[0] || "");
   }, []);
 
-  const handleSaveDeck = async () => {
-    try {
-      const apiUrl = getApiUrl();
-      const response = await fetch(`${apiUrl}/api/deck`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(deck),
-      });
-
-      if (response.ok) {
-        alert("編成を保存しました！");
-      }
-    } catch {
-      alert("サーバーへの接続に失敗しました。");
-    }
+  const handleSaveDeck = () => {
+    alert("このバージョンでは編成の保存機能は無効化されています。");
   };
 
   const currentStrategyDetail = useMemo(() => {
