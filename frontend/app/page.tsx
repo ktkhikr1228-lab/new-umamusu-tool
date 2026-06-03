@@ -11,6 +11,8 @@ import cardsData from "../src/data/cards.json";
 import raceDataRaw from "../src/data/race_data.json";
 
 const STRATEGY_ORDER = ["逃げ", "先行", "差し", "追込"];
+const CONTACT_FORM_URL =
+  "https://docs.google.com/forms/d/e/1FAIpQLSfGUiRhR6bkJ3V54ywE-D9R_s5LJKAlppjFP2qt4YWFaYucuA/viewform";
 const INITIAL_CARDS = cardsData as SupportCard[];
 const INITIAL_RACE_DATA = raceDataRaw as unknown as RaceData;
 const INITIAL_RACE = Object.keys(INITIAL_RACE_DATA)[0] || "";
@@ -306,6 +308,14 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-2">
+          <a
+            href={CONTACT_FORM_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
+          >
+            不具合・要望
+          </a>
           <button
             onClick={() => setDeck([])}
             className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
