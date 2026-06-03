@@ -26,16 +26,16 @@ function SkillGroup({
       : "bg-amber-50 text-amber-700 border-amber-200";
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       <span
         className={`mb-2 block w-fit flex-shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}
       >
         {title}
       </span>
       <div
-        className={`flex flex-wrap gap-2 pr-1 ${
+        className={`flex min-h-0 flex-1 flex-wrap content-start gap-2 pr-1 ${
           scrollable
-            ? "custom-scrollbar min-h-0 overflow-y-auto"
+            ? "custom-scrollbar overflow-y-auto"
             : "overflow-hidden"
         }`}
       >
@@ -66,8 +66,8 @@ function SkillGroup({
 
 export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
   return (
-    <div className="grid min-h-[168px] grid-cols-1 gap-4 md:h-[168px] md:min-h-0 md:grid-cols-[minmax(220px,0.75fr)_minmax(0,1.65fr)]">
-      <div className="rounded-md bg-background/40 p-2">
+    <div className="grid min-h-[168px] grid-cols-1 gap-4 md:h-[216px] md:min-h-0 md:grid-cols-[minmax(360px,0.95fr)_minmax(0,1.45fr)]">
+      <div className="h-full min-h-0 overflow-hidden rounded-md bg-background/40 p-2">
         <SkillGroup
           title="超おすすめスキル"
           tone="super"
@@ -75,7 +75,7 @@ export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
           deckSkills={deckSkills}
         />
       </div>
-      <div className="min-h-0 rounded-md bg-background/40 p-2">
+      <div className="h-full min-h-0 overflow-hidden rounded-md bg-background/40 p-2">
         <SkillGroup
           title="おすすめスキル"
           tone="recommended"

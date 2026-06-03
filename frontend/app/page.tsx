@@ -336,7 +336,7 @@ export default function Home() {
   );
 
   const renderSkillPanel = () => (
-    <section className="flex-shrink-0 rounded-lg border border-border bg-card px-4 py-3">
+    <section className="flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card px-4 py-3">
       <SkillList strategyDetail={currentStrategyDetail} deckSkills={deckSkills} />
     </section>
   );
@@ -395,7 +395,7 @@ export default function Home() {
           {renderRaceHeader()}
 
           <div className="flex-1 overflow-hidden p-5">
-            <div className="mx-auto flex h-full max-w-5xl flex-col gap-6">
+            <div className="mx-auto flex h-full max-w-5xl flex-col gap-8">
               {renderSkillPanel()}
               <div className="min-h-0 flex-1">
                 {renderDeckGrid(3)}
