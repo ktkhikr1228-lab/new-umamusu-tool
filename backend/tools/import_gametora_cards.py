@@ -22,12 +22,12 @@ TYPE_LABELS = {
 }
 
 RARITY_LABELS = {
-    1: "SSR",
+    1: "R",
     2: "SR",
-    3: "R",
-    "1": "SSR",
+    3: "SSR",
+    "1": "R",
     "2": "SR",
-    "3": "R",
+    "3": "SSR",
     "ssr": "SSR",
     "sr": "SR",
     "r": "R",
@@ -37,8 +37,7 @@ RARITY_LABELS = {
 }
 
 DEFAULT_MANIFEST_URLS = (
-    "https://gametora.com/data/umamusume.json",
-    "https://gametora.com/data/umamusume/umamusume.json",
+    "https://gametora.com/data/manifests/umamusume.json",
 )
 
 GAMETORA_DATA_BASE_URL = "https://gametora.com/data/umamusume"
@@ -68,7 +67,7 @@ DOWNLOAD_TARGETS = {
 
 
 def read_json(path: Path) -> Any:
-    with path.open("r", encoding="utf-8") as file:
+    with path.open("r", encoding="utf-8-sig") as file:
         return json.load(file)
 
 
@@ -235,6 +234,20 @@ def normalize_skill_ids(value: Any) -> list[str]:
     return result
 
 
+def extract_support_hint_skill_ids(card: dict[str, Any]) -> list[str]:
+    skill_ids = normalize_skill_ids(
+        pick(card, ("hint_skills", "hintSkills", "skills"), [])
+    )
+    hints = card.get("hints")
+    if isinstance(hints, dict):
+        skill_ids.extend(
+            normalize_skill_ids(
+                pick(hints, ("hint_skills", "hintSkills", "skills"), [])
+            )
+        )
+    return skill_ids
+
+
 def resolve_skills(skill_ids: list[str], skill_map: dict[str, str]) -> list[str]:
     resolved: list[str] = []
     seen: set[str] = set()
@@ -323,11 +336,19 @@ def normalize_rarity(value: Any) -> str:
     return RARITY_LABELS.get(value, RARITY_LABELS.get(str(value), str(value or "")))
 
 
-def build_card_name(card_title: str, character_name: str) -> str:
+def normalize_card_title(card_title: str) -> str:
     title = card_title.strip()
+    if (
+        (title.startswith("[") and title.endswith("]"))
+        or (title.startswith("［") and title.endswith("］"))
+    ):
+        return title[1:-1].strip()
+    return title
+
+
+def build_card_name(card_title: str, character_name: str) -> str:
+    title = normalize_card_title(card_title)
     character = character_name.strip()
-    if title.startswith("［") and title.endswith("］"):
-        return f"{title}{character}"
     return f"［{title}］{character}"
 
 
@@ -339,7 +360,10 @@ def convert_support_cards(
     event_skill_map = event_skill_map or {}
     cards: list[dict[str, Any]] = []
     for raw_card in as_records(support_cards_data):
-        source_id = pick(raw_card, ("id", "support_card_id", "supportCardId", "card_id", "cardId"))
+        source_id = pick(
+            raw_card,
+            ("support_id", "supportId", "id", "support_card_id", "supportCardId", "card_id", "cardId"),
+        )
         character = str(
             pick(raw_card, ("name_jp", "name_ja", "name_jpn", "chara_name", "character"))
         ).strip()
@@ -349,9 +373,7 @@ def convert_support_cards(
         if not character or not card_title:
             continue
 
-        hint_skill_ids = normalize_skill_ids(
-            pick(raw_card, ("hint_skills", "hintSkills", "skills"), [])
-        )
+        hint_skill_ids = extract_support_hint_skill_ids(raw_card)
         rare_skill_ids = normalize_skill_ids(
             pick(raw_card, ("rare_skills", "rareSkills", "event_skills", "eventSkills"), [])
         )
@@ -366,7 +388,7 @@ def convert_support_cards(
                 "source_id": str(source_id) if source_id not in (None, "") else "",
                 "name": build_card_name(card_title, character),
                 "char": character,
-                "card": card_title,
+                "card": normalize_card_title(card_title),
                 "rarity": normalize_rarity(pick(raw_card, ("rarity", "rare"))),
                 "type": normalize_type(pick(raw_card, ("type", "support_type", "supportType"))),
                 "skills": all_skills,
@@ -382,15 +404,31 @@ def merge_cards(
     replace: bool,
 ) -> tuple[list[dict[str, Any]], int, int]:
     if replace:
-        next_id = 1
         result = []
         for card in imported_cards:
-            result.append({**card, "id": next_id})
-            next_id += 1
+            card_id = card.get("source_id") if str(card.get("source_id", "")).isdigit() else card.get("id", 0)
+            result.append({**card, "id": int(card_id) if str(card_id).isdigit() else 0})
         return result, len(result), 0
 
     result = list(existing_cards)
-    existing_by_name = {str(card.get("name", "")): index for index, card in enumerate(result)}
+    existing_by_source = {}
+    existing_by_name = {}
+    used_ids = set()
+    for index, card in enumerate(result):
+        card_id = str(card.get("id", ""))
+        source_id = str(card.get("source_id") or card.get("support_id") or "")
+        name = build_card_name(str(card.get("card", "")), str(card.get("char", "")))
+        existing_name = str(card.get("name", ""))
+        if card_id:
+            used_ids.add(card_id)
+            existing_by_source.setdefault(card_id, index)
+        if source_id:
+            existing_by_source.setdefault(source_id, index)
+        if name:
+            existing_by_name.setdefault(name, index)
+        if existing_name:
+            existing_by_name.setdefault(existing_name, index)
+
     next_id = max(
         [int(card.get("id", 0)) for card in result if str(card.get("id", "")).isdigit()]
         or [0]
@@ -400,15 +438,32 @@ def merge_cards(
     updated = 0
     for card in imported_cards:
         name = str(card.get("name", ""))
-        if name in existing_by_name:
-            index = existing_by_name[name]
+        source_id = str(card.get("source_id", ""))
+        index = existing_by_source.get(source_id) if source_id else None
+        if index is None:
+            index = existing_by_name.get(name)
+
+        if index is not None:
             result[index] = {**result[index], **card, "id": result[index].get("id", next_id)}
+            if source_id:
+                existing_by_source[source_id] = index
+            existing_by_name[name] = index
             updated += 1
             continue
 
-        result.append({**card, "id": next_id})
+        if source_id.isdigit() and source_id not in used_ids:
+            card_id = int(source_id)
+        else:
+            while str(next_id) in used_ids:
+                next_id += 1
+            card_id = next_id
+            next_id += 1
+
+        result.append({**card, "id": card_id})
         existing_by_name[name] = len(result) - 1
-        next_id += 1
+        if source_id:
+            existing_by_source[source_id] = len(result) - 1
+        used_ids.add(str(card_id))
         added += 1
 
     return result, added, updated

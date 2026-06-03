@@ -1,0 +1,81 @@
+name: Update GameTora data
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 21:00 JST. The workflow only opens a PR when cards.json changes.
+    - cron: "0 12 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Update cards.json from GameTora
+        run: |
+          python backend/tools/import_gametora_cards.py \
+            --download-latest \
+            --download-dir "$RUNNER_TEMP/gametora-data" \
+            --no-backup
+
+      - name: Validate generated JSON
+        run: |
+          python -m json.tool frontend/src/data/cards.json > /dev/null
+
+      - name: Check whether data changed
+        id: changes
+        shell: bash
+        run: |
+          if git diff --quiet -- frontend/src/data/cards.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: steps.changes.outputs.changed == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        if: steps.changes.outputs.changed == 'true'
+        working-directory: frontend
+        run: npm run build
+
+      - name: Create pull request
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: data/gametora-${{ github.run_id }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+          git add frontend/src/data/cards.json
+          git commit -m "Update GameTora support card data"
+          git push origin "$BRANCH_NAME"
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "Update GameTora support card data" \
+            --body "Updated frontend/src/data/cards.json from GameTora support-cards, skills, ssr-events, and sr-events."
