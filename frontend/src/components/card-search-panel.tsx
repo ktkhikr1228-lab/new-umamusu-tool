@@ -54,9 +54,6 @@ export function CardSearchPanel({
     >
       <div className={`border-b border-border bg-card ${isEmbedded ? "p-4" : "p-5"}`}>
         <h1 className="mb-4 flex items-center gap-2 text-lg font-semibold text-card-foreground">
-          <span className="grid size-7 place-items-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-            S
-          </span>
           サポカ検索
         </h1>
 
@@ -101,11 +98,6 @@ export function CardSearchPanel({
           <span className="text-xs font-semibold text-muted-foreground">
             該当: {displayedCards.length}枚
           </span>
-          {isSmartSortActive ? (
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-              スコア順
-            </span>
-          ) : null}
         </div>
 
         <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
@@ -150,11 +142,6 @@ export function CardSearchPanel({
                     </div>
                   </div>
                   <div className="flex w-[64px] flex-shrink-0 flex-col items-stretch gap-1">
-                    {isSmartSortActive && cardScore > 0 && !isAdded ? (
-                      <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-center text-[10px] font-bold leading-4 text-white">
-                        +{cardScore}pt
-                      </span>
-                    ) : null}
                     <button
                       onClick={() => onAddCard(card)}
                       disabled={isAdded || deck.length >= 6}

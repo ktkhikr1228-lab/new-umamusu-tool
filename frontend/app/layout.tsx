@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ウマ娘 チャンミ編成ツール",
-  description: "サポカ編成と必須スキル達成率を確認するチャンピオンズミーティング攻略ツール",
+  title: "ウマ娘 因子周回ツール",
+  description: "因子周回向けのサポカ編成と必要スキル達成率を確認するツール",
 };
 
 export default function RootLayout({
