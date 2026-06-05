@@ -254,9 +254,6 @@ export default function Home() {
           }
         >
           <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
-            <span className="grid size-7 place-items-center rounded-md bg-primary/10 text-xs font-bold text-primary">
-              R
-            </span>
             レース目標
           </h1>
 
