@@ -302,6 +302,18 @@ export default function Home() {
               </span>
             )}
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">
+              超おすすめ 残り {missingSuperSkills.length}
+            </span>
+            <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
+              おすすめ 残り {missingRecommendedSkills.length}
+            </span>
+            <span className="rounded-md border border-border bg-background px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+              編成 {deck.length}/6
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -317,14 +329,12 @@ export default function Home() {
             onClick={() => setDeck([])}
             className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
           >
-            <span aria-hidden="true">×</span>
             編成クリア
           </button>
           <button
             onClick={handleSaveDeck}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            <span aria-hidden="true">□</span>
             編成保存
           </button>
         </div>
