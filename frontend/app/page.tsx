@@ -254,7 +254,7 @@ export default function Home() {
           }
         >
           <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
-            レース目標
+            因子周回条件
           </h1>
 
           <div className={compact ? "grid grid-cols-[1fr_auto] gap-2" : "flex items-center gap-4"}>
@@ -318,14 +318,14 @@ export default function Home() {
             className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
           >
             <span aria-hidden="true">×</span>
-            クリア
+            編成クリア
           </button>
           <button
             onClick={handleSaveDeck}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <span aria-hidden="true">□</span>
-            保存
+            編成保存
           </button>
         </div>
       </div>
@@ -342,7 +342,7 @@ export default function Home() {
     <section className="min-h-0 rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-card-foreground">
-          サポカ編成
+          現在の編成
         </h2>
         <span className="text-xs text-muted-foreground">{deck.length}/6枚</span>
       </div>
@@ -424,7 +424,7 @@ export default function Home() {
         </main>
 
         <nav className="grid grid-cols-3 gap-2 border-t-2 border-border bg-card p-2">
-          {renderMobileNavButton({ tab: "search", label: "サポカ検索" })}
+          {renderMobileNavButton({ tab: "search", label: "サポカ探し" })}
           {renderMobileNavButton({ tab: "skills", label: "スキル" })}
           {renderMobileNavButton({
             tab: "deck",

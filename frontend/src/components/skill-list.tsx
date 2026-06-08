@@ -24,14 +24,22 @@ function SkillGroup({
     tone === "super"
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : "bg-amber-50 text-amber-700 border-amber-200";
+  const achievedCount = skills.filter((skill) => deckSkills.has(skill)).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <span
-        className={`mb-2 block w-fit flex-shrink-0 rounded-md border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}
-      >
-        {title}
-      </span>
+      <div className="mb-2 flex flex-shrink-0 items-center gap-2">
+        <span
+          className={`block w-fit rounded-md border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}
+        >
+          {title}
+        </span>
+        {skills.length > 0 ? (
+          <span className="text-[11px] font-semibold text-muted-foreground">
+            取得 {achievedCount}/{skills.length}
+          </span>
+        ) : null}
+      </div>
       <div
         className={`flex min-h-0 flex-1 flex-wrap content-start gap-2 pr-1 ${
           scrollable
