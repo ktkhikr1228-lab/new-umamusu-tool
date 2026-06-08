@@ -54,7 +54,7 @@ export function CardSearchPanel({
     >
       <div className={`border-b border-border bg-card ${isEmbedded ? "p-4" : "p-5"}`}>
         <h1 className="mb-4 flex items-center gap-2 text-lg font-semibold text-card-foreground">
-          サポカ検索
+          サポカを探す
         </h1>
 
         <input
@@ -89,14 +89,14 @@ export function CardSearchPanel({
               : "bg-slate-900 text-white hover:bg-slate-800"
           }`}
         >
-          {isSmartSortActive ? "最適化ソート中" : "不足スキルで最適化"}
+          {isSmartSortActive ? "不足スキル順で表示中" : "不足スキル順に並べる"}
         </button>
       </div>
 
       <div className={`flex min-h-0 flex-1 flex-col bg-background/60 ${isEmbedded ? "p-3" : "p-4"}`}>
         <div className="mb-2 flex items-center justify-between px-1">
           <span className="text-xs font-semibold text-muted-foreground">
-            該当: {displayedCards.length}枚
+            候補 {displayedCards.length}枚
           </span>
         </div>
 
@@ -108,6 +108,15 @@ export function CardSearchPanel({
               card,
               missingSuperSkills,
               missingRecommendedSkills
+            );
+            const cardSkills = Array.from(new Set(getCardSkills(card)));
+            const matchingSkills = cardSkills.filter(
+              (skill) =>
+                missingSuperSkills.includes(skill) ||
+                missingRecommendedSkills.includes(skill)
+            );
+            const otherSkills = cardSkills.filter(
+              (skill) => !matchingSkills.includes(skill)
             );
 
             return (
@@ -156,28 +165,42 @@ export function CardSearchPanel({
                   </div>
                 </div>
 
-                <div className="flex max-h-[4.5rem] flex-wrap gap-1.5 overflow-hidden">
-                  {getCardSkills(card)
-                    .slice(0, 12)
-                    .map((skill) => {
-                      const superHit = missingSuperSkills.includes(skill);
-                      const recommendedHit =
-                        missingRecommendedSkills.includes(skill);
-                      return (
+                <div className="flex max-h-[5.25rem] flex-col gap-1.5 overflow-hidden">
+                  {matchingSkills.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                        不足分
+                      </span>
+                      {matchingSkills.slice(0, 5).map((skill) => {
+                        const superHit = missingSuperSkills.includes(skill);
+                        return (
+                          <span
+                            key={skill}
+                            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+                              superHit
+                                ? "border-rose-300 bg-rose-50 text-rose-700"
+                                : "border-amber-300 bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {skill}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {(matchingSkills.length > 0 ? otherSkills : cardSkills)
+                      .slice(0, matchingSkills.length > 0 ? 8 : 12)
+                      .map((skill) => (
                         <span
                           key={skill}
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                            superHit
-                              ? "border border-rose-300 bg-rose-50 text-rose-700"
-                              : recommendedHit
-                                ? "border border-amber-300 bg-amber-50 text-amber-700"
-                                : "bg-secondary text-muted-foreground"
-                          }`}
+                          className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
                         >
                           {skill}
                         </span>
-                      );
-                    })}
+                      ))}
+                  </div>
                 </div>
               </div>
             );
