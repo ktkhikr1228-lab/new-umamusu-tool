@@ -169,7 +169,7 @@ export function CardSearchPanel({
                   {matchingSkills.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                        不足分
+                        埋まるスキル
                       </span>
                       {matchingSkills.slice(0, 5).map((skill) => {
                         const superHit = missingSuperSkills.includes(skill);

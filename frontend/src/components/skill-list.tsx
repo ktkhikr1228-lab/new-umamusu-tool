@@ -36,7 +36,7 @@ function SkillGroup({
         </span>
         {skills.length > 0 ? (
           <span className="text-[11px] font-semibold text-muted-foreground">
-            取得 {achievedCount}/{skills.length}
+            編成内 {achievedCount}/{skills.length}
           </span>
         ) : null}
       </div>
