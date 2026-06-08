@@ -110,14 +110,6 @@ export function CardSearchPanel({
               missingRecommendedSkills
             );
             const cardSkills = Array.from(new Set(getCardSkills(card)));
-            const matchingSkills = cardSkills.filter(
-              (skill) =>
-                missingSuperSkills.includes(skill) ||
-                missingRecommendedSkills.includes(skill)
-            );
-            const otherSkills = cardSkills.filter(
-              (skill) => !matchingSkills.includes(skill)
-            );
 
             return (
               <div
@@ -165,42 +157,26 @@ export function CardSearchPanel({
                   </div>
                 </div>
 
-                <div className="flex max-h-[5.25rem] flex-col gap-1.5 overflow-hidden">
-                  {matchingSkills.length > 0 ? (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                        埋まるスキル
-                      </span>
-                      {matchingSkills.slice(0, 5).map((skill) => {
-                        const superHit = missingSuperSkills.includes(skill);
-                        return (
-                          <span
-                            key={skill}
-                            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
-                              superHit
-                                ? "border-rose-300 bg-rose-50 text-rose-700"
-                                : "border-amber-300 bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            {skill}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+                <div className="flex max-h-[4.5rem] flex-wrap gap-1.5 overflow-hidden">
+                  {cardSkills.slice(0, 12).map((skill) => {
+                    const superHit = missingSuperSkills.includes(skill);
+                    const recommendedHit = missingRecommendedSkills.includes(skill);
 
-                  <div className="flex flex-wrap gap-1.5">
-                    {(matchingSkills.length > 0 ? otherSkills : cardSkills)
-                      .slice(0, matchingSkills.length > 0 ? 8 : 12)
-                      .map((skill) => (
+                    return (
                         <span
                           key={skill}
-                          className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            superHit
+                              ? "border border-rose-300 bg-rose-50 text-rose-700"
+                              : recommendedHit
+                                ? "border border-amber-300 bg-amber-50 text-amber-700"
+                                : "bg-secondary text-muted-foreground"
+                          }`}
                         >
                           {skill}
                         </span>
-                      ))}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
             );
