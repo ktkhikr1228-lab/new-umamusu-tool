@@ -1,21 +1,39 @@
-import { SupportCard } from "./types";
+import { SupportCard, UsageMode } from "./types";
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-export function getCardSkills(card: SupportCard) {
-  return [...(card.skills || []), ...(card.rare_skills || [])];
+function uniqueSkills(skills: string[]) {
+  return Array.from(new Set(skills.filter(Boolean)));
+}
+
+export function getCardSkills(card: SupportCard, usageMode: UsageMode = "training") {
+  if (usageMode === "factor") {
+    return uniqueSkills(card.factor_skills || card.skills || []);
+  }
+
+  return uniqueSkills(
+    card.training_skills || [
+      ...(card.skills || []),
+      ...(card.rare_skills || []),
+      ...(card.gold_skills || []),
+    ]
+  );
 }
 
 export function scoreCard(
   card: SupportCard,
   missingSuperSkills: string[],
-  missingRecommendedSkills: string[]
+  missingRecommendedSkills: string[],
+  usageMode: UsageMode = "factor"
 ) {
-  return getCardSkills(card).reduce((score, skill) => {
-    if (missingSuperSkills.includes(skill)) return score + 3;
-    if (missingRecommendedSkills.includes(skill)) return score + 1;
+  const goldSkills = new Set([...(card.rare_skills || []), ...(card.gold_skills || [])]);
+
+  return getCardSkills(card, usageMode).reduce((score, skill) => {
+    const goldBonus = usageMode === "training" && goldSkills.has(skill) ? 2 : 0;
+    if (missingSuperSkills.includes(skill)) return score + 3 + goldBonus;
+    if (missingRecommendedSkills.includes(skill)) return score + 1 + goldBonus;
     return score;
   }, 0);
 }
