@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CardSearchPanel } from "../src/components/card-search-panel";
 import { DeckSlot } from "../src/components/deck-slot";
 import { SkillList } from "../src/components/skill-list";
-import { RaceData, StrategyDetail, SupportCard } from "../src/lib/types";
+import { RaceData, StrategyDetail, SupportCard, UsageMode } from "../src/lib/types";
 import { cn, getCardSkills, scoreCard } from "../src/lib/utils";
 
 import cardsData from "../src/data/cards.json";
@@ -23,6 +23,11 @@ const emptyStrategyDetail: StrategyDetail = {
 };
 
 type MobileTab = "search" | "skills" | "deck";
+
+const USAGE_MODE_OPTIONS: Array<{ value: UsageMode; label: string }> = [
+  { value: "factor", label: "因子周回" },
+  { value: "training", label: "本育成" },
+];
 
 function getApiBaseUrl() {
   const envUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
@@ -59,7 +64,7 @@ export default function Home() {
   const [raceData, setRaceData] = useState<RaceData>(INITIAL_RACE_DATA);
   const [selectedRace, setSelectedRace] = useState(INITIAL_RACE);
   const [strategy, setStrategy] = useState("先行");
-  const [isSmartSortActive, setIsSmartSortActive] = useState(false);
+  const [usageMode, setUsageMode] = useState<UsageMode>("factor");
   const [mobileTab, setMobileTab] = useState<MobileTab>("search");
 
   const raceOptions = useMemo(() => Object.keys(raceData), [raceData]);
@@ -133,10 +138,10 @@ export default function Home() {
   const deckSkills = useMemo(() => {
     const skills = new Set<string>();
     deck.forEach((card) => {
-      getCardSkills(card).forEach((skill) => skills.add(skill));
+      getCardSkills(card, usageMode).forEach((skill) => skills.add(skill));
     });
     return skills;
-  }, [deck]);
+  }, [deck, usageMode]);
 
   const missingSuperSkills = useMemo(
     () =>
@@ -180,22 +185,20 @@ export default function Home() {
       });
     }
 
-    if (isSmartSortActive) {
-      filtered = filtered.sort(
-        (a, b) =>
-          scoreCard(b, missingSuperSkills, missingRecommendedSkills) -
-          scoreCard(a, missingSuperSkills, missingRecommendedSkills)
-      );
-    }
+    filtered = filtered.sort(
+      (a, b) =>
+        scoreCard(b, missingSuperSkills, missingRecommendedSkills, usageMode) -
+        scoreCard(a, missingSuperSkills, missingRecommendedSkills, usageMode)
+    );
 
     return filtered;
   }, [
     activeFilter,
     cards,
-    isSmartSortActive,
     missingRecommendedSkills,
     missingSuperSkills,
     searchKeyword,
+    usageMode,
   ]);
 
   const addToDeck = (card: SupportCard) => {
@@ -214,18 +217,10 @@ export default function Home() {
 
   const cardSearchPanelProps = {
     searchKeyword,
-    onSearchChange: (value: string) => {
-      setSearchKeyword(value);
-      setIsSmartSortActive(false);
-    },
+    onSearchChange: setSearchKeyword,
     activeFilter,
-    onFilterChange: (filter: string) => {
-      setActiveFilter(filter);
-      setIsSmartSortActive(false);
-    },
-    isSmartSortActive,
-    onSmartSortToggle: () =>
-      setIsSmartSortActive((currentValue) => !currentValue),
+    onFilterChange: setActiveFilter,
+    usageMode,
     displayedCards,
     deck,
     missingSuperSkills,
@@ -254,7 +249,7 @@ export default function Home() {
           }
         >
           <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
-            因子周回条件
+            目標条件
           </h1>
 
           <div className={compact ? "grid grid-cols-[1fr_auto] gap-2" : "flex items-center gap-4"}>
@@ -262,7 +257,7 @@ export default function Home() {
               <select
                 value={selectedRace}
                 onChange={(event) => setSelectedRace(event.target.value)}
-                className="w-full min-w-0 appearance-none rounded-lg border border-input bg-background px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:min-w-[220px]"
+                className="w-full min-w-0 appearance-none rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:min-w-[220px]"
               >
                 {raceOptions.length === 0 ? (
                   <option value="">レースデータなし</option>
@@ -280,15 +275,15 @@ export default function Home() {
             </div>
 
             {strategyOptions.length > 0 ? (
-              <div className="flex rounded-lg bg-secondary p-0.5">
+              <div className="flex rounded-md border border-border bg-secondary p-0.5">
                 {strategyOptions.map((option) => (
                   <button
                     key={option}
                     onClick={() => setStrategy(option)}
                     className={cn(
-                      "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                      "rounded px-3 py-1 text-xs font-medium transition",
                       effectiveStrategy === option
-                        ? "bg-card text-card-foreground shadow-sm"
+                        ? "material-tab-active text-card-foreground"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
@@ -302,6 +297,23 @@ export default function Home() {
               </span>
             )}
           </div>
+
+          <div className="flex rounded-md border border-border bg-secondary p-0.5">
+            {USAGE_MODE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setUsageMode(option.value)}
+                className={cn(
+                  "rounded px-3 py-1 text-xs font-semibold transition",
+                  usageMode === option.value
+                    ? "material-tab-active text-card-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -309,19 +321,19 @@ export default function Home() {
             href={CONTACT_FORM_URL}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
+            className="material-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition"
           >
             不具合・要望
           </a>
           <button
             onClick={() => setDeck([])}
-            className="flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-muted"
+            className="material-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition"
           >
             編成クリア
           </button>
           <button
             onClick={handleSaveDeck}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            className="material-button-primary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition"
           >
             編成保存
           </button>
@@ -353,6 +365,7 @@ export default function Home() {
             card={deck[index]}
             slotIndex={index}
             allTargetSkills={allTargetSkills}
+            usageMode={usageMode}
             onRemove={() => removeFromDeck(deck[index])}
           />
         ))}
@@ -374,7 +387,7 @@ export default function Home() {
       className={cn(
         "flex flex-1 flex-col items-center justify-center rounded-lg px-2 py-2 text-xs font-semibold transition-colors",
         mobileTab === tab
-          ? "bg-primary text-primary-foreground"
+          ? "material-button-primary"
           : "text-muted-foreground hover:bg-secondary hover:text-foreground"
       )}
     >

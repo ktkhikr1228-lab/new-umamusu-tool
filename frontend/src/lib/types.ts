@@ -5,6 +5,8 @@ export type StrategyDetail = {
 
 export type RaceData = Record<string, Record<string, StrategyDetail>>;
 
+export type UsageMode = "factor" | "training";
+
 export type SupportCard = {
   id: number;
   name: string;
@@ -14,4 +16,7 @@ export type SupportCard = {
   type: string;
   skills: string[];
   rare_skills?: string[];
+  gold_skills?: string[];
+  factor_skills?: string[];
+  training_skills?: string[];
 };
