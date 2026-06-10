@@ -1,7 +1,7 @@
 "use client";
 
 import { getCardSkills, getTypeStyle, scoreCard } from "../lib/utils";
-import { SupportCard, UsageMode } from "../lib/types";
+import { SupportCard } from "../lib/types";
 
 const FILTERS = [
   "すべて",
@@ -18,7 +18,8 @@ type CardSearchPanelProps = {
   onSearchChange: (value: string) => void;
   activeFilter: string;
   onFilterChange: (filter: string) => void;
-  usageMode: UsageMode;
+  isSmartSortActive: boolean;
+  onSmartSortToggle: () => void;
   displayedCards: SupportCard[];
   deck: SupportCard[];
   missingSuperSkills: string[];
@@ -32,7 +33,8 @@ export function CardSearchPanel({
   onSearchChange,
   activeFilter,
   onFilterChange,
-  usageMode,
+  isSmartSortActive,
+  onSmartSortToggle,
   displayedCards,
   deck,
   missingSuperSkills,
@@ -44,7 +46,7 @@ export function CardSearchPanel({
 
   return (
     <aside
-      className={`flex h-full flex-col bg-card ${
+      className={`flex h-full flex-col bg-card shadow-sm ${
         isEmbedded
           ? "w-full rounded-lg border border-border"
           : "w-[420px] flex-shrink-0 border-r border-border"
@@ -60,7 +62,7 @@ export function CardSearchPanel({
           value={searchKeyword}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="スキル名・キャラ名・カード名で検索..."
-          className="mb-4 w-full rounded-md border border-input bg-card px-3 py-2.5 text-sm font-medium outline-none transition focus:ring-2 focus:ring-ring"
+          className="mb-4 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm font-medium outline-none transition focus:ring-2 focus:ring-ring"
         />
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -70,7 +72,7 @@ export function CardSearchPanel({
               onClick={() => onFilterChange(filter)}
               className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                 activeFilter === filter
-                  ? "material-button-primary"
+                  ? "bg-primary text-primary-foreground"
                   : "bg-secondary text-secondary-foreground hover:bg-muted"
               }`}
             >
@@ -79,21 +81,23 @@ export function CardSearchPanel({
           ))}
         </div>
 
+        <button
+          onClick={onSmartSortToggle}
+          className={`w-full rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+            isSmartSortActive
+              ? "bg-emerald-100 text-emerald-800"
+              : "bg-slate-900 text-white hover:bg-slate-800"
+          }`}
+        >
+          {isSmartSortActive ? "不足スキル順で表示中" : "不足スキル順に並べる"}
+        </button>
       </div>
 
       <div className={`flex min-h-0 flex-1 flex-col bg-background/60 ${isEmbedded ? "p-3" : "p-4"}`}>
         <div className="mb-2 flex items-center justify-between px-1">
-          <span className="text-xs font-semibold text-card-foreground">
+          <span className="text-xs font-semibold text-muted-foreground">
             候補 {displayedCards.length}枚
           </span>
-          <div className="flex items-center gap-1.5">
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
-              おすすめ順
-            </span>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-              {usageMode === "factor" ? "因子用" : "本育成用"}
-            </span>
-          </div>
         </div>
 
         <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
@@ -103,17 +107,16 @@ export function CardSearchPanel({
             const cardScore = scoreCard(
               card,
               missingSuperSkills,
-              missingRecommendedSkills,
-              usageMode
+              missingRecommendedSkills
             );
-            const cardSkills = getCardSkills(card, usageMode);
+            const cardSkills = Array.from(new Set(getCardSkills(card)));
 
             return (
               <div
                 key={card.id}
-                className={`rounded-md border bg-card p-3 ${
-                  cardScore > 0 && !isAdded
-                    ? "border-emerald-400"
+                className={`rounded-lg border bg-card p-3 shadow-sm ${
+                  isSmartSortActive && cardScore > 0 && !isAdded
+                    ? "border-emerald-300"
                     : "border-border"
                 }`}
               >
@@ -143,10 +146,10 @@ export function CardSearchPanel({
                     <button
                       onClick={() => onAddCard(card)}
                       disabled={isAdded || deck.length >= 6}
-                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition ${
+                      className={`rounded-md px-2 py-1.5 text-xs font-semibold transition-colors ${
                         isAdded
-                          ? "material-button-secondary"
-                          : "material-button-primary disabled:bg-secondary disabled:text-muted-foreground"
+                          ? "bg-secondary text-muted-foreground"
+                          : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-secondary disabled:text-muted-foreground"
                       }`}
                     >
                       {isAdded ? "編成済" : "追加"}
