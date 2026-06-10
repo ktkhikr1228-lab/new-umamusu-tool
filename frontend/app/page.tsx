@@ -387,7 +387,7 @@ export default function Home() {
       className={cn(
         "flex flex-1 flex-col items-center justify-center rounded-lg px-2 py-2 text-xs font-semibold transition-colors",
         mobileTab === tab
-          ? "material-button-primary"
+          ? "material-button-primary is-subtle"
           : "text-muted-foreground hover:bg-secondary hover:text-foreground"
       )}
     >
