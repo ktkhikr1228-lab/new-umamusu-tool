@@ -230,7 +230,7 @@ export default function Home() {
 
   const renderRaceHeader = (compact = false) => (
     <header
-      className={`glass-panel flex-shrink-0 border-b border-border ${
+      className={`flex-shrink-0 border-b border-border bg-card ${
         compact ? "px-3 py-3" : "px-6 py-4"
       }`}
     >
@@ -257,7 +257,7 @@ export default function Home() {
               <select
                 value={selectedRace}
                 onChange={(event) => setSelectedRace(event.target.value)}
-                className="w-full min-w-0 appearance-none rounded-[18px] border border-input bg-white/75 px-3 py-1.5 pr-8 text-sm font-bold text-card-foreground outline-none backdrop-blur focus:ring-2 focus:ring-ring md:min-w-[220px]"
+                className="w-full min-w-0 appearance-none rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:min-w-[220px]"
               >
                 {raceOptions.length === 0 ? (
                   <option value="">レースデータなし</option>
@@ -275,16 +275,16 @@ export default function Home() {
             </div>
 
             {strategyOptions.length > 0 ? (
-              <div className="flex rounded-[18px] border border-border bg-[#d4c8e8]/70 p-0.5">
+              <div className="flex rounded-md border border-border bg-secondary p-0.5">
                 {strategyOptions.map((option) => (
                   <button
                     key={option}
                     onClick={() => setStrategy(option)}
                     className={cn(
-                      "rounded-[14px] px-3 py-1 text-xs font-bold transition",
+                      "rounded px-3 py-1 text-xs font-medium transition",
                       effectiveStrategy === option
-                        ? "material-tab-active"
-                        : "text-[#6f6380] hover:text-card-foreground"
+                        ? "material-tab-active text-card-foreground"
+                        : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     {option}
@@ -298,16 +298,16 @@ export default function Home() {
             )}
           </div>
 
-          <div className="flex rounded-[18px] border border-border bg-[#d4c8e8]/70 p-0.5">
+          <div className="flex rounded-md border border-border bg-secondary p-0.5">
             {USAGE_MODE_OPTIONS.map((option) => (
               <button
                 key={option.value}
                 onClick={() => setUsageMode(option.value)}
                 className={cn(
-                  "rounded-[14px] px-3 py-1 text-xs font-bold transition",
+                  "rounded px-3 py-1 text-xs font-semibold transition",
                   usageMode === option.value
-                    ? "material-tab-active"
-                    : "text-[#6f6380] hover:text-card-foreground"
+                    ? "material-tab-active text-card-foreground"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {option.label}
@@ -343,13 +343,13 @@ export default function Home() {
   );
 
   const renderSkillPanel = () => (
-    <section className="glass-panel flex-shrink-0 overflow-hidden rounded-[22px] px-4 py-3">
+    <section className="flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card px-4 py-3">
       <SkillList strategyDetail={currentStrategyDetail} deckSkills={deckSkills} />
     </section>
   );
 
   const renderDeckGrid = (columns: 2 | 3) => (
-    <section className="glass-panel min-h-0 rounded-[22px] p-4">
+    <section className="min-h-0 rounded-lg border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-card-foreground">
           現在の編成
@@ -385,10 +385,10 @@ export default function Home() {
     <button
       onClick={() => setMobileTab(tab)}
       className={cn(
-        "flex flex-1 flex-col items-center justify-center rounded-[18px] px-2 py-2 text-xs font-bold transition-colors",
+        "flex flex-1 flex-col items-center justify-center rounded-lg px-2 py-2 text-xs font-semibold transition-colors",
         mobileTab === tab
           ? "material-button-primary is-subtle"
-          : "bg-[#b0a8c0]/35 text-[#6f6380] hover:bg-[#b0a8c0]/55 hover:text-card-foreground"
+          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
       )}
     >
       <span>{label}</span>
@@ -436,7 +436,7 @@ export default function Home() {
           ) : null}
         </main>
 
-        <nav className="glass-panel grid grid-cols-3 gap-2 border-t-2 border-border p-2">
+        <nav className="grid grid-cols-3 gap-2 border-t-2 border-border bg-card p-2">
           {renderMobileNavButton({ tab: "search", label: "サポカ探し" })}
           {renderMobileNavButton({ tab: "skills", label: "スキル" })}
           {renderMobileNavButton({
