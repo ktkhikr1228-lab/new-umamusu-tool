@@ -21,13 +21,17 @@ function SkillGroup({
   scrollable?: boolean;
 }) {
   const badgeClass =
-    tone === "super" ? "section-banner-super" : "section-banner-recommended";
+    tone === "super"
+      ? "bg-rose-50 text-rose-700 border-rose-200"
+      : "bg-amber-50 text-amber-700 border-amber-200";
   const achievedCount = skills.filter((skill) => deckSkills.has(skill)).length;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-2 flex flex-shrink-0 items-center gap-2">
-        <span className={`w-fit text-xs ${badgeClass}`}>
+        <span
+          className={`block w-fit rounded-md border px-2 py-0.5 text-xs font-semibold ${badgeClass}`}
+        >
           {title}
         </span>
         {skills.length > 0 ? (
@@ -53,8 +57,8 @@ function SkillGroup({
                 key={skill}
                 className={
                   achieved
-                    ? "skill-chip skill-chip-achieved px-2.5 py-1 text-[11px] font-bold"
-                    : "skill-chip px-2.5 py-1 text-[11px] font-bold"
+                    ? "rounded-md border border-emerald-700 bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
+                    : "rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground"
                 }
               >
                 {skill}
@@ -71,7 +75,7 @@ function SkillGroup({
 export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
   return (
     <div className="grid min-h-[168px] grid-cols-1 gap-4 md:h-[216px] md:min-h-0 md:grid-cols-[minmax(360px,0.95fr)_minmax(0,1.45fr)]">
-      <div className="soft-panel h-full min-h-0 overflow-hidden rounded-[18px] p-2">
+      <div className="h-full min-h-0 overflow-hidden rounded-md bg-background/40 p-2">
         <SkillGroup
           title="超おすすめスキル"
           tone="super"
@@ -79,7 +83,7 @@ export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
           deckSkills={deckSkills}
         />
       </div>
-      <div className="soft-panel h-full min-h-0 overflow-hidden rounded-[18px] p-2">
+      <div className="h-full min-h-0 overflow-hidden rounded-md bg-background/40 p-2">
         <SkillGroup
           title="おすすめスキル"
           tone="recommended"

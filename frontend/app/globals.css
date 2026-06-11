@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #e8e0f0;
-  --foreground: #50351f;
-  --card: rgba(255, 255, 255, 0.75);
-  --card-foreground: #4b2f1b;
-  --border: #d4c8e8;
-  --input: #b0a8c0;
-  --muted: #f0edf5;
-  --muted-foreground: #7b6f8a;
-  --secondary: #f0edf5;
-  --secondary-foreground: #5e526d;
-  --primary: #5cb847;
+  --background: #f4f6f8;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --border: #d6dde6;
+  --input: #b8c4d2;
+  --muted: #e6ebf1;
+  --muted-foreground: #64748b;
+  --secondary: #eef2f6;
+  --secondary-foreground: #334155;
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
   --destructive: #dc2626;
-  --ring: #94d77e;
+  --ring: #93c5fd;
 }
 
 @theme inline {
@@ -32,77 +32,56 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans), "Noto Sans JP", "Hiragino Sans", "Yu Gothic", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background:
-    radial-gradient(circle at 20% 8%, rgba(255, 255, 255, 0.72), transparent 30%),
-    linear-gradient(135deg, #f5f0fa 0%, #e8e0f0 46%, #d4c8e8 100%);
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
 }
 
-.glass-panel {
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(212, 200, 232, 0.9);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.88),
-    0 8px 20px rgba(88, 66, 116, 0.12);
-  backdrop-filter: blur(12px);
-}
-
-.soft-panel {
-  background: rgba(255, 255, 255, 0.64);
-  border: 1px solid rgba(212, 200, 232, 0.85);
-  backdrop-filter: blur(10px);
-}
-
 .material-button-primary {
-  border: 2px solid #3f8f28;
-  border-radius: 24px;
+  border: 1px solid #9fb2ca;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 38%),
-    linear-gradient(180deg, #6abf4b 0%, #5cb847 56%, #4a9e2f 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.22) 42%),
+    linear-gradient(180deg, #ffffff 0%, #f2f6fb 58%, #dce7f3 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.48),
-    inset 0 -3px 0 rgba(40, 109, 24, 0.42),
-    0 3px 0 rgba(67, 95, 53, 0.24);
-  color: #ffffff;
-  text-shadow: 0 1px 0 rgba(42, 92, 27, 0.42);
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    inset 0 -2px 0 rgba(37, 99, 235, 0.18),
+    0 2px 0 rgba(15, 23, 42, 0.14);
+  color: #1d4ed8;
 }
 
 .material-button-primary.is-subtle {
-  border-color: #4a9e2f;
-  color: #ffffff;
+  color: #1e293b;
 }
 
 .material-button-primary:hover {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0) 38%),
-    linear-gradient(180deg, #78cb58 0%, #61be49 56%, #4da532 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.28) 42%),
+    linear-gradient(180deg, #ffffff 0%, #f5f8fc 58%, #e4edf7 100%);
 }
 
 .material-button-primary:active {
   transform: translateY(1px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -1px 0 rgba(40, 109, 24, 0.35),
-    0 1px 0 rgba(67, 95, 53, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 -1px 0 rgba(37, 99, 235, 0.16),
+    0 1px 0 rgba(15, 23, 42, 0.12);
 }
 
 .material-button-secondary {
-  border: 2px solid #b0a8c0;
-  border-radius: 24px;
+  border: 1px solid #bac6d4;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.38) 42%),
-    linear-gradient(180deg, #ffffff 0%, #f0edf5 62%, #e2d9ee 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.2) 42%),
+    linear-gradient(180deg, #ffffff 0%, #eef2f6 60%, #dfe6ee 100%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -2px 0 rgba(104, 82, 130, 0.12),
-    0 3px 0 rgba(88, 66, 116, 0.15);
-  color: #5a3b20;
+    inset 0 -2px 0 rgba(15, 23, 42, 0.09),
+    0 2px 0 rgba(15, 23, 42, 0.12);
+  color: #334155;
 }
 
 .material-button-secondary:hover {
@@ -118,74 +97,14 @@ body {
 }
 
 .material-tab-active {
-  border: 1px solid #4a9e2f;
-  background: #5cb847;
+  border: 1px solid #c1cad6;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.25) 45%),
+    linear-gradient(180deg, #ffffff 0%, #f4f6f8 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -2px 0 rgba(40, 109, 24, 0.26);
-  color: #ffffff;
-}
-
-.section-banner-super,
-.section-banner-recommended {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0.25rem 0.7rem;
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: inset 0 -2px 0 rgba(64, 39, 76, 0.16);
-}
-
-.section-banner-super {
-  background: linear-gradient(180deg, #f08aac 0%, #e8709a 100%);
-}
-
-.section-banner-recommended {
-  background: linear-gradient(180deg, #79c95e 0%, #5cb847 100%);
-}
-
-.skill-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  border: 1px solid rgba(212, 200, 232, 0.95);
-  border-radius: 8px;
-  background: #f0edf5;
-  color: #665874;
-}
-
-.skill-chip::before {
-  content: "";
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: #f5a623;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
-}
-
-.skill-chip-achieved {
-  border-color: #4a9e2f;
-  background: #5cb847;
-  color: #ffffff;
-}
-
-.skill-chip-achieved::before {
-  background: #ffffff;
-}
-
-.rarity-badge {
-  border-radius: 999px;
-  padding: 0.12rem 0.5rem;
-  background: rgba(240, 237, 245, 0.92);
-  color: #766883;
-  font-weight: 800;
-}
-
-.rarity-badge-ssr {
-  background: linear-gradient(135deg, #7753b8 0%, #b98a2f 52%, #ffd66b 100%);
-  color: #ffffff;
-  text-shadow: 0 1px 0 rgba(64, 39, 76, 0.36);
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.08),
+    0 1px 1px rgba(15, 23, 42, 0.12);
 }
 
 .material-button-primary:disabled,
