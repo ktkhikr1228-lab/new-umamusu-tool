@@ -20,7 +20,7 @@ export function DeckSlot({
 }: DeckSlotProps) {
   if (!card) {
     return (
-      <div className="flex h-[148px] flex-col items-center justify-center rounded-md border border-dashed border-border bg-secondary/70 text-muted-foreground">
+      <div className="soft-panel flex h-[148px] flex-col items-center justify-center rounded-[18px] border-dashed text-muted-foreground">
         <span className="text-3xl font-light">{slotIndex + 1}</span>
         <span className="text-xs font-medium">空き枠</span>
       </div>
@@ -31,15 +31,19 @@ export function DeckSlot({
 
   return (
     <div
-      className={`flex h-[148px] flex-col rounded-md border bg-card p-3 ${style.border}`}
+      className={`soft-panel flex h-[148px] flex-col rounded-[18px] p-3 ${style.border}`}
     >
       <div className="mb-1 flex items-center gap-1.5">
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${style.bg} ${style.text}`}
+          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${style.bg} ${style.text}`}
         >
           {card.type}
         </span>
-        <span className="truncate text-[10px] font-semibold text-muted-foreground">
+        <span
+          className={`rarity-badge truncate text-[10px] ${
+            card.rarity === "SSR" ? "rarity-badge-ssr" : ""
+          }`}
+        >
           {card.rarity}
         </span>
       </div>
@@ -55,8 +59,8 @@ export function DeckSlot({
                 key={skill}
                 className={
                   target
-                    ? "rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-semibold text-white"
-                    : "rounded bg-secondary px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground"
+                    ? "skill-chip skill-chip-achieved px-1.5 py-0.5 text-[9px] font-bold"
+                    : "skill-chip px-1.5 py-0.5 text-[9px] font-bold"
                 }
               >
                 {skill}
