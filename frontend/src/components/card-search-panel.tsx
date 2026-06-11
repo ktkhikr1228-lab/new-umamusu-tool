@@ -44,14 +44,14 @@ export function CardSearchPanel({
 
   return (
     <aside
-      className={`flex h-full flex-col bg-card ${
+      className={`glass-panel flex h-full flex-col ${
         isEmbedded
-          ? "w-full rounded-lg border border-border"
+          ? "w-full rounded-[22px]"
           : "w-[420px] flex-shrink-0 border-r border-border"
       }`}
     >
-      <div className={`border-b border-border bg-card ${isEmbedded ? "p-4" : "p-5"}`}>
-        <h1 className="mb-4 flex items-center gap-2 text-lg font-semibold text-card-foreground">
+      <div className={`border-b border-border ${isEmbedded ? "p-4" : "p-5"}`}>
+        <h1 className="section-banner-recommended mb-4 flex w-fit items-center gap-2 text-sm">
           サポカを探す
         </h1>
 
@@ -60,7 +60,7 @@ export function CardSearchPanel({
           value={searchKeyword}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="スキル名・キャラ名・カード名で検索..."
-          className="mb-4 w-full rounded-md border border-input bg-card px-3 py-2.5 text-sm font-medium outline-none transition focus:ring-2 focus:ring-ring"
+          className="mb-4 w-full rounded-[18px] border border-input bg-white/75 px-3 py-2.5 text-sm font-bold text-card-foreground outline-none backdrop-blur transition placeholder:text-[#8a7d99] focus:ring-2 focus:ring-ring"
         />
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -71,7 +71,7 @@ export function CardSearchPanel({
               className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                 activeFilter === filter
                   ? "material-button-primary"
-                  : "bg-secondary text-secondary-foreground hover:bg-muted"
+                  : "bg-[#b0a8c0]/35 text-[#6f6380] hover:bg-[#b0a8c0]/55 hover:text-card-foreground"
               }`}
             >
               {filter}
@@ -81,16 +81,16 @@ export function CardSearchPanel({
 
       </div>
 
-      <div className={`flex min-h-0 flex-1 flex-col bg-background/60 ${isEmbedded ? "p-3" : "p-4"}`}>
+      <div className={`flex min-h-0 flex-1 flex-col bg-white/25 ${isEmbedded ? "p-3" : "p-4"}`}>
         <div className="mb-2 flex items-center justify-between px-1">
           <span className="text-xs font-semibold text-card-foreground">
             候補 {displayedCards.length}枚
           </span>
           <div className="flex items-center gap-1.5">
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
+            <span className="rounded-full bg-[#b0a8c0]/35 px-2 py-0.5 text-[10px] font-bold text-[#6f6380]">
               おすすめ順
             </span>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <span className="rounded-full bg-[#5cb847]/15 px-2 py-0.5 text-[10px] font-bold text-[#3f8f28]">
               {usageMode === "factor" ? "因子用" : "本育成用"}
             </span>
           </div>
@@ -111,9 +111,9 @@ export function CardSearchPanel({
             return (
               <div
                 key={card.id}
-                className={`rounded-md border bg-card p-3 ${
+                className={`soft-panel rounded-[18px] p-3 ${
                   cardScore > 0 && !isAdded
-                    ? "border-emerald-400"
+                    ? "border-[#5cb847]"
                     : "border-border"
                 }`}
               >
@@ -121,15 +121,15 @@ export function CardSearchPanel({
                   <div className="min-w-0 flex-1">
                     <div className="mb-1.5 flex items-center gap-1.5">
                       <span
-                        className={`rounded px-2 py-0.5 text-[10px] font-semibold ${style.bg} ${style.text}`}
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${style.bg} ${style.text}`}
                       >
                         {card.type}
                       </span>
                       <span
-                        className={`text-[10px] font-semibold ${
+                        className={`rarity-badge text-[10px] ${
                           card.rarity === "SSR"
-                            ? "text-amber-600"
-                            : "text-muted-foreground"
+                            ? "rarity-badge-ssr"
+                            : ""
                         }`}
                       >
                         {card.rarity}
@@ -162,12 +162,12 @@ export function CardSearchPanel({
                     return (
                         <span
                           key={skill}
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                          className={`skill-chip px-1.5 py-0.5 text-[10px] font-bold ${
                             superHit
-                              ? "border border-rose-300 bg-rose-50 text-rose-700"
+                              ? "border-[#e8709a] text-[#b84f75]"
                               : recommendedHit
-                                ? "border border-amber-300 bg-amber-50 text-amber-700"
-                                : "bg-secondary text-muted-foreground"
+                                ? "border-[#f5a623] text-[#9a6411]"
+                                : ""
                           }`}
                         >
                           {skill}
