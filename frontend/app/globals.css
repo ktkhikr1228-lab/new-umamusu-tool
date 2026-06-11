@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f6f8;
-  --foreground: #1e293b;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --border: #d6dde6;
-  --input: #b8c4d2;
-  --muted: #e6ebf1;
-  --muted-foreground: #64748b;
-  --secondary: #eef2f6;
-  --secondary-foreground: #334155;
-  --primary: #2563eb;
+  --background: #f0edf7;
+  --foreground: #2d2640;
+  --card: rgba(255, 255, 255, 0.82);
+  --card-foreground: #1e1a2e;
+  --border: #d4cce8;
+  --input: #c5bce0;
+  --muted: #e8e3f3;
+  --muted-foreground: #7a6e96;
+  --secondary: #ede9f7;
+  --secondary-foreground: #4a3f6b;
+  --primary: #5cb847;
   --primary-foreground: #ffffff;
   --destructive: #dc2626;
-  --ring: #93c5fd;
+  --ring: #b8a8e0;
 }
 
 @theme inline {
@@ -32,56 +32,56 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
   --color-ring: var(--ring);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Noto Sans JP", var(--font-geist-sans), "Hiragino Sans", "Yu Gothic", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
+  background-image:
+    radial-gradient(ellipse at 20% 20%, rgba(180, 160, 230, 0.25) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(160, 200, 180, 0.15) 0%, transparent 60%);
   color: var(--foreground);
   font-family: var(--font-sans);
 }
 
+.bg-card {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
 .material-button-primary {
-  border: 1px solid #9fb2ca;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.22) 42%),
-    linear-gradient(180deg, #ffffff 0%, #f2f6fb 58%, #dce7f3 100%);
+  border: 1px solid #4a9e30;
+  background: linear-gradient(180deg, #72d155 0%, #4fa832 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    inset 0 -2px 0 rgba(37, 99, 235, 0.18),
-    0 2px 0 rgba(15, 23, 42, 0.14);
-  color: #1d4ed8;
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 2px 4px rgba(74, 158, 48, 0.35);
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
 
 .material-button-primary.is-subtle {
-  color: #1e293b;
+  color: #ffffff;
 }
 
 .material-button-primary:hover {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.28) 42%),
-    linear-gradient(180deg, #ffffff 0%, #f5f8fc 58%, #e4edf7 100%);
+  background: linear-gradient(180deg, #7ee063 0%, #58b938 100%);
 }
 
 .material-button-primary:active {
   transform: translateY(1px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.86),
-    inset 0 -1px 0 rgba(37, 99, 235, 0.16),
-    0 1px 0 rgba(15, 23, 42, 0.12);
+    inset 0 1px 2px rgba(0, 0, 0, 0.15),
+    0 1px 2px rgba(74, 158, 48, 0.3);
 }
 
 .material-button-secondary {
-  border: 1px solid #bac6d4;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.2) 42%),
-    linear-gradient(180deg, #ffffff 0%, #eef2f6 60%, #dfe6ee 100%);
+  border: 1px solid #c5bce0;
+  background: linear-gradient(180deg, #ffffff 0%, #ede9f7 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -2px 0 rgba(15, 23, 42, 0.09),
-    0 2px 0 rgba(15, 23, 42, 0.12);
-  color: #334155;
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 3px rgba(100, 80, 160, 0.12);
+  color: #4a3f6b;
 }
 
 .material-button-secondary:hover {
@@ -97,14 +97,11 @@ body {
 }
 
 .material-tab-active {
-  border: 1px solid #c1cad6;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.25) 45%),
-    linear-gradient(180deg, #ffffff 0%, #f4f6f8 100%);
+  border: 1px solid #b8a8e0;
+  background: linear-gradient(180deg, #ffffff 0%, #ede9f7 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.08),
-    0 1px 1px rgba(15, 23, 42, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 2px rgba(100, 80, 160, 0.15);
 }
 
 .material-button-primary:disabled,
