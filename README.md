@@ -100,6 +100,27 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 レース条件ごとのスキルデータは、現在は `frontend/src/data/race_data.json` を参照します。
 
+## トレーナーガイド画像の取り込み
+
+スクショからレース条件ごとのスキルCSVを作る入口を追加しています。
+
+詳しい手順:
+
+- `backend/data/guide_import/README.md`
+
+主な流れ:
+
+```text
+ローカル画像フォルダ
+  -> backend/tools/extract_trainer_guide.py
+  -> backend/data/guide_import/extracted/*.csv
+  -> 人間が確認して checked/race_skills_checked.csv
+  -> backend/tools/build_race_data.py
+  -> frontend/src/data/race_data.json
+```
+
+画像ファイルそのものはGitHubに入れず、ローカルまたはGoogle Drive for desktopの同期フォルダで管理します。
+
 ## 変更しやすくするためのメモ
 
 よく変わりそうな場所:
@@ -123,4 +144,3 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - スクショからスキル表へ取り込む運用の整理
 - お問い合わせ内容をもとにUI/UXを改善
 - ユーザー別保存機能の優先度を再検討
-
