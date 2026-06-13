@@ -1,44 +1,76 @@
 # GameTora import files
 
-## One-command update
+GameTora由来のサポートカードJSONを `frontend/src/data/cards.json` に取り込むための作業場所です。
 
-From `backend`, this tries to download the latest GameTora files and update
-`frontend/src/data/cards.json`.
-
-```powershell
-C:\Users\katao\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe tools\import_gametora_cards.py --download-latest
-```
-
-It downloads:
+## 更新対象
 
 - `support-cards`
 - `skills`
 - `training_events/ssr`
 - `training_events/sr`
 
-If GameTora blocks command-line downloads, save the JSON files manually into
-this folder and use the fallback command below.
+ヒントスキルとイベントスキルは、フロントで扱いやすいように各カードの `skills` 配列へまとめます。
 
-## Manual fallback
+## 自動更新
 
-Put downloaded GameTora JSON files here, for example:
-
-- `support-cards.6e41ebb5.json`
-- `skills.528f3ead.json`
-- `ssr.61a5479d.json`
-- `sr.5c101002.json`
-
-Then run from `backend`:
+`backend` ディレクトリから実行します。
 
 ```powershell
-C:\Users\katao\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe tools\import_gametora_cards.py --support-cards data\import\support-cards.6e41ebb5.json --skills data\import\skills.528f3ead.json
+python tools\import_gametora_cards.py --download-latest
 ```
 
-With SSR/SR event skills:
+このコマンドはGameToraのmanifestを見て、最新のハッシュ付きJSONを取得します。
+
+環境によって `python` が見つからない場合は、Codexの同梱PythonなどフルパスのPythonに置き換えてください。
+
+## 手動更新
+
+コマンドラインからGameToraの取得がブロックされる場合は、ブラウザでJSONを保存してこのフォルダへ置きます。
+
+ファイル名の例:
+
+```text
+support-cards.HASH.json
+skills.HASH.json
+ssr.HASH.json
+sr.HASH.json
+```
+
+実行例:
 
 ```powershell
-C:\Users\katao\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe tools\import_gametora_cards.py --support-cards data\import\support-cards.6e41ebb5.json --skills data\import\skills.528f3ead.json --ssr-events data\import\ssr.61a5479d.json --sr-events data\import\sr.5c101002.json
+python tools\import_gametora_cards.py `
+  --support-cards data\import\support-cards.HASH.json `
+  --skills data\import\skills.HASH.json `
+  --ssr-events data\import\ssr.HASH.json `
+  --sr-events data\import\sr.HASH.json
 ```
 
-Hint skills and event skills are merged into each card's `skills` array.
-`rare_skills` is kept as an empty array for compatibility with the frontend.
+SSR/SRイベントがまだ無い場合は、まず `support-cards` と `skills` だけでも取り込めます。
+
+```powershell
+python tools\import_gametora_cards.py `
+  --support-cards data\import\support-cards.HASH.json `
+  --skills data\import\skills.HASH.json
+```
+
+## 更新後に確認すること
+
+リポジトリ直下に戻ってから確認します。
+
+```powershell
+cd ..\frontend
+npm run lint
+npm run build
+```
+
+確認ポイント:
+
+- `frontend/src/data/cards.json` のカード数が増えているか
+- 主要カードのタイプが正しいか
+- 新しいカードのスキルが表示されるか
+- Vercelのプレビューで表示が崩れていないか
+
+## メモ
+
+`rare_skills` はフロント互換のため残していますが、現在の表示・計算では主に `skills` を参照します。

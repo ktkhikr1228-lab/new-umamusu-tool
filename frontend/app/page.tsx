@@ -5,7 +5,12 @@ import { CardSearchPanel } from "../src/components/card-search-panel";
 import { DeckSlot } from "../src/components/deck-slot";
 import { SkillList } from "../src/components/skill-list";
 import { RaceData, StrategyDetail, SupportCard, UsageMode } from "../src/lib/types";
-import { cn, getCardSkills, scoreCard } from "../src/lib/utils";
+import {
+  cn,
+  filterSkillsForUsageMode,
+  getCardSkills,
+  scoreCard,
+} from "../src/lib/utils";
 
 import cardsData from "../src/data/cards.json";
 import raceDataRaw from "../src/data/race_data.json";
@@ -127,12 +132,26 @@ export default function Home() {
     return detail;
   }, [effectiveStrategy, raceData, selectedRace]);
 
+  const visibleStrategyDetail = useMemo(
+    () => ({
+      super_recommended: filterSkillsForUsageMode(
+        currentStrategyDetail.super_recommended,
+        usageMode
+      ),
+      recommended: filterSkillsForUsageMode(
+        currentStrategyDetail.recommended,
+        usageMode
+      ),
+    }),
+    [currentStrategyDetail, usageMode]
+  );
+
   const allTargetSkills = useMemo(
     () => [
-      ...currentStrategyDetail.super_recommended,
-      ...currentStrategyDetail.recommended,
+      ...visibleStrategyDetail.super_recommended,
+      ...visibleStrategyDetail.recommended,
     ],
-    [currentStrategyDetail]
+    [visibleStrategyDetail]
   );
 
   const deckSkills = useMemo(() => {
@@ -145,18 +164,18 @@ export default function Home() {
 
   const missingSuperSkills = useMemo(
     () =>
-      currentStrategyDetail.super_recommended.filter(
+      visibleStrategyDetail.super_recommended.filter(
         (skill) => !deckSkills.has(skill)
       ),
-    [currentStrategyDetail, deckSkills]
+    [visibleStrategyDetail, deckSkills]
   );
 
   const missingRecommendedSkills = useMemo(
     () =>
-      currentStrategyDetail.recommended.filter(
+      visibleStrategyDetail.recommended.filter(
         (skill) => !deckSkills.has(skill)
       ),
-    [currentStrategyDetail, deckSkills]
+    [visibleStrategyDetail, deckSkills]
   );
 
   const displayedCards = useMemo(() => {
@@ -175,7 +194,7 @@ export default function Home() {
     if (searchKeyword.trim() !== "") {
       const keyword = searchKeyword.toLowerCase();
       filtered = filtered.filter((card) => {
-        const allSkills = getCardSkills(card);
+        const allSkills = getCardSkills(card, usageMode);
         return (
           card.name.toLowerCase().includes(keyword) ||
           card.char.toLowerCase().includes(keyword) ||
@@ -344,7 +363,7 @@ export default function Home() {
 
   const renderSkillPanel = () => (
     <section className="flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card px-4 py-3">
-      <SkillList strategyDetail={currentStrategyDetail} deckSkills={deckSkills} />
+      <SkillList strategyDetail={visibleStrategyDetail} deckSkills={deckSkills} />
     </section>
   );
 
