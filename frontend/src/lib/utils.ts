@@ -1,4 +1,8 @@
+import nonFactorSkills from "../data/non_factor_skills.json";
 import { SupportCard, UsageMode } from "./types";
+
+const NON_FACTOR_SKILLS = new Set(nonFactorSkills as string[]);
+const DOUBLE_CIRCLE = "\u25ce";
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -8,18 +12,32 @@ function uniqueSkills(skills: string[]) {
   return Array.from(new Set(skills.filter(Boolean)));
 }
 
-export function getCardSkills(card: SupportCard, usageMode: UsageMode = "training") {
-  if (usageMode === "factor") {
-    return uniqueSkills(card.factor_skills || card.skills || []);
-  }
+export function isFactorSkill(skill: string) {
+  return !skill.includes(DOUBLE_CIRCLE) && !NON_FACTOR_SKILLS.has(skill);
+}
 
-  return uniqueSkills(
-    card.training_skills || [
-      ...(card.skills || []),
-      ...(card.rare_skills || []),
-      ...(card.gold_skills || []),
-    ]
-  );
+export function filterSkillsForUsageMode(
+  skills: string[],
+  usageMode: UsageMode
+) {
+  const unique = uniqueSkills(skills);
+  return usageMode === "factor" ? unique.filter(isFactorSkill) : unique;
+}
+
+export function getCardSkills(
+  card: SupportCard,
+  usageMode: UsageMode = "training"
+) {
+  const skills =
+    usageMode === "factor"
+      ? card.factor_skills || card.skills || []
+      : card.training_skills || [
+          ...(card.skills || []),
+          ...(card.rare_skills || []),
+          ...(card.gold_skills || []),
+        ];
+
+  return filterSkillsForUsageMode(skills, usageMode);
 }
 
 export function scoreCard(
