@@ -231,20 +231,20 @@ export default function Home() {
   const renderRaceHeader = (compact = false) => (
     <header
       className={`flex-shrink-0 border-b border-border bg-card ${
-        compact ? "px-3 py-3" : "px-6 py-4"
+        compact ? "px-3 py-2" : "px-6 py-4"
       }`}
     >
       <div
         className={
           compact
-            ? "flex flex-col gap-3"
+            ? "flex flex-col gap-2"
             : "flex items-center justify-between gap-4"
         }
       >
         <div
           className={
             compact
-              ? "flex flex-col gap-3"
+              ? "flex flex-col gap-2"
               : "flex min-w-0 items-center gap-4"
           }
         >
@@ -252,12 +252,12 @@ export default function Home() {
             目標条件
           </h1>
 
-          <div className={compact ? "grid grid-cols-[1fr_auto] gap-2" : "flex items-center gap-4"}>
+          <div className={compact ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2" : "flex items-center gap-4"}>
             <div className="relative min-w-0">
               <select
                 value={selectedRace}
                 onChange={(event) => setSelectedRace(event.target.value)}
-                className="w-full min-w-0 appearance-none rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:min-w-[220px]"
+                className="w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:min-w-[220px]"
               >
                 {raceOptions.length === 0 ? (
                   <option value="">レースデータなし</option>
@@ -275,7 +275,7 @@ export default function Home() {
             </div>
 
             {strategyOptions.length > 0 ? (
-              <div className="flex rounded-md border border-border bg-secondary p-0.5">
+              <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
                 {strategyOptions.map((option) => (
                   <button
                     key={option}
@@ -418,7 +418,7 @@ export default function Home() {
       <div className="flex h-[100dvh] flex-col overflow-hidden bg-background font-sans text-foreground md:hidden">
         {renderRaceHeader(true)}
 
-        <main className="min-h-0 flex-1 overflow-hidden p-3">
+        <main className="min-h-0 flex-1 overflow-hidden px-3 pb-3 pt-2">
           {mobileTab === "search" ? (
             <CardSearchPanel {...cardSearchPanelProps} variant="embedded" />
           ) : null}
