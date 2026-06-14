@@ -40,9 +40,15 @@ TIER_ALIASES = {
 
 
 class GeminiRateLimitError(RuntimeError):
-    def __init__(self, message: str, retry_after: float | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        retry_after: float | None = None,
+        quota_scope: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.retry_after = retry_after
+        self.quota_scope = quota_scope
 
 
 def list_images(input_dir: Path) -> list[Path]:
@@ -127,6 +133,35 @@ def extract_retry_after_seconds(body: str) -> float | None:
     return None
 
 
+def extract_quota_scope(body: str) -> str | None:
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        data = None
+
+    quota_ids: list[str] = []
+    if isinstance(data, dict):
+        details = data.get("error", {}).get("details", [])
+        if isinstance(details, list):
+            for detail in details:
+                if not isinstance(detail, dict):
+                    continue
+                violations = detail.get("violations")
+                if not isinstance(violations, list):
+                    continue
+                for violation in violations:
+                    if isinstance(violation, dict):
+                        quota_id = violation.get("quotaId")
+                        if isinstance(quota_id, str):
+                            quota_ids.append(quota_id)
+
+    if any("PerDay" in quota_id for quota_id in quota_ids):
+        return "day"
+    if any("PerMinute" in quota_id for quota_id in quota_ids):
+        return "minute"
+    return None
+
+
 def call_gemini_for_image(
     image_path: Path,
     *,
@@ -179,6 +214,7 @@ def call_gemini_for_image(
             raise GeminiRateLimitError(
                 f"Gemini API error {error.code}: {body}",
                 retry_after=extract_retry_after_seconds(body),
+                quota_scope=extract_quota_scope(body),
             ) from error
         raise RuntimeError(f"Gemini API error {error.code}: {body}") from error
 
@@ -325,6 +361,12 @@ def call_gemini_with_retries(
                 strategy=strategy,
             )
         except GeminiRateLimitError as error:
+            if error.quota_scope == "day":
+                raise RuntimeError(
+                    "Gemini daily free-tier quota is exhausted for this model. "
+                    "Try again after the daily quota resets, use another API key/project, "
+                    "or enable billing. Completed images have already been saved."
+                ) from error
             if attempt >= max_retries:
                 raise
             wait_seconds = max(error.retry_after or 0, delay_seconds, 15)
