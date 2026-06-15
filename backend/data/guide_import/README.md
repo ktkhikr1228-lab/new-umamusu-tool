@@ -86,6 +86,7 @@ python backend\tools\check_extracted_skills.py `
 ```
 
 この時点では `status` は `draft` のままです。目視で確認して、サイトに反映してよい行だけ `ready` にします。
+同じレース・脚質・スキルが `super_recommended` と `recommended` の両方に出た場合は、確認用CSVでは `super_recommended` を優先して残します。
 
 ## 3. CSVを確認する
 

@@ -28,6 +28,13 @@ REPORT_COLUMNS = [
     "source_files",
     "csv_files",
 ]
+TIER_PRIORITY = {
+    "recommended": 1,
+    "super_recommended": 2,
+}
+GUIDE_ONLY_SKILLS = {
+    "\u7cbe\u795e\u529b",
+}
 
 # High-confidence OCR fixes seen in trainer-guide screenshots.
 COMMON_FIXES = {
@@ -38,6 +45,7 @@ COMMON_FIXES = {
     "\u5f71\u8e0f\u7834": "\u5f71\u5f93\u6253\u7834",
     "\u63fa\u308b\u304c\u306c\u81ea\u4fe1": "\u63fa\u308b\u304c\u306c\u4fe1\u5ff5",
     "\u6602\u308b\u8db3\u53d6\u308a": "\u9038\u308b\u8db3\u53d6\u308a",
+    "\u661f\u306e\u714c\u3081\u304d": "\u661f\u306e\u714c\u304d",
     "\u9023\u8987\u53cd\u5fdc": "\u9023\u9396\u53cd\u5fdc",
     "\u601c\u60a7\u72e1\u733e": "\u601c\u60a7\u6e05\u6f84",
     "\u5343\u4e21\u4e07\u92ad": "\u5343\u921e\u4e07\u9460",
@@ -147,6 +155,8 @@ def classify_skill(skill: str, known: set[str], non_factor: set[str]) -> str:
         return "common_fix"
     if skill in non_factor:
         return "ok_non_factor"
+    if skill in GUIDE_ONLY_SKILLS:
+        return "ok_guide_only"
     if is_double_circle_variant(skill, known):
         return "ok_factor_excluded_double_circle"
     if skill in known:
@@ -199,6 +209,43 @@ def append_memo(memo: str, addition: str) -> str:
     return f"{memo}; {addition}" if memo else addition
 
 
+def resolve_tier_conflicts(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    index_by_key: dict[tuple[str, str, str], int] = {}
+
+    for row in rows:
+        key = (
+            row.get("race", ""),
+            row.get("strategy", ""),
+            row.get("skill", ""),
+        )
+        if key not in index_by_key:
+            index_by_key[key] = len(result)
+            result.append(row)
+            continue
+
+        current_index = index_by_key[key]
+        current_row = result[current_index]
+        current_score = TIER_PRIORITY.get(current_row.get("tier", ""), 0)
+        new_score = TIER_PRIORITY.get(row.get("tier", ""), 0)
+
+        if new_score > current_score:
+            row["memo"] = append_memo(
+                row.get("memo", ""),
+                f"tier_conflict:kept_{row.get('tier', '')}_over_{current_row.get('tier', '')}",
+            )
+            result[current_index] = row
+            continue
+
+        if new_score < current_score:
+            current_row["memo"] = append_memo(
+                current_row.get("memo", ""),
+                f"tier_conflict:dropped_{row.get('tier', '')}_duplicate",
+            )
+
+    return result
+
+
 def fixed_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     seen: set[tuple[str, str, str, str]] = set()
@@ -221,7 +268,7 @@ def fixed_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             continue
         seen.add(key)
         result.append(new_row)
-    return result
+    return resolve_tier_conflicts(result)
 
 
 def write_csv(path: Path, columns: list[str], rows: list[dict[str, str]]) -> None:
@@ -243,6 +290,7 @@ def print_summary(
     for key in (
         "ok_known",
         "ok_non_factor",
+        "ok_guide_only",
         "ok_factor_excluded_double_circle",
         "common_fix",
         "review_unknown",
