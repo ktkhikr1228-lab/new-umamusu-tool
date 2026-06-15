@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { getCardSkills, getTypeStyle, scoreCard } from "../lib/utils";
 import { SupportCard, UsageMode } from "../lib/types";
 
@@ -25,6 +26,7 @@ type CardSearchPanelProps = {
   missingRecommendedSkills: string[];
   onAddCard: (card: SupportCard) => void;
   variant?: "sidebar" | "embedded";
+  headerActions?: ReactNode;
 };
 
 export function CardSearchPanel({
@@ -39,6 +41,7 @@ export function CardSearchPanel({
   missingRecommendedSkills,
   onAddCard,
   variant = "sidebar",
+  headerActions,
 }: CardSearchPanelProps) {
   const isEmbedded = variant === "embedded";
 
@@ -51,9 +54,16 @@ export function CardSearchPanel({
       }`}
     >
       <div className={`border-b border-border bg-card ${isEmbedded ? "p-4" : "p-5"}`}>
-        <h1 className="mb-4 flex items-center gap-2 text-lg font-semibold text-card-foreground">
-          サポカを探す
-        </h1>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h1 className="flex items-center gap-2 whitespace-nowrap text-lg font-semibold text-card-foreground">
+            サポカを探す
+          </h1>
+          {headerActions ? (
+            <div className="flex shrink-0 items-center justify-end gap-2">
+              {headerActions}
+            </div>
+          ) : null}
+        </div>
 
         <input
           type="text"

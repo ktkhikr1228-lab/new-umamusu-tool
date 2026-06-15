@@ -252,6 +252,29 @@ export default function Home() {
     onAddCard: addToDeck,
   };
 
+  const renderDeckActionButtons = (compact = false) => (
+    <>
+      <button
+        onClick={() => setDeck([])}
+        className={cn(
+          "material-button-secondary flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-semibold transition",
+          compact ? "min-w-[92px] px-3 py-1.5" : "min-w-[64px] px-2.5 py-1.5"
+        )}
+      >
+        {compact ? "編成クリア" : "クリア"}
+      </button>
+      <button
+        onClick={handleSaveDeck}
+        className={cn(
+          "material-button-primary flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-bold transition",
+          compact ? "min-w-[92px] px-3 py-1.5" : "min-w-[64px] px-2.5 py-1.5"
+        )}
+      >
+        {compact ? "編成保存" : "保存"}
+      </button>
+    </>
+  );
+
   const renderRaceHeader = (compact = false) => (
     <header
       className={`flex-shrink-0 border-b border-border bg-card ${
@@ -369,18 +392,7 @@ export default function Home() {
           >
             不具合・要望
           </a>
-          <button
-            onClick={() => setDeck([])}
-            className="material-button-secondary flex min-w-[92px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition"
-          >
-            編成クリア
-          </button>
-          <button
-            onClick={handleSaveDeck}
-            className="material-button-primary flex min-w-[92px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition"
-          >
-            編成保存
-          </button>
+          {compact ? renderDeckActionButtons(true) : null}
         </div>
       </div>
     </header>
@@ -443,13 +455,16 @@ export default function Home() {
   return (
     <>
       <div className="hidden h-screen overflow-hidden bg-background font-sans text-foreground md:flex">
-        <CardSearchPanel {...cardSearchPanelProps} />
+        <CardSearchPanel
+          {...cardSearchPanelProps}
+          headerActions={renderDeckActionButtons()}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {renderRaceHeader()}
 
-          <div className="flex-1 overflow-hidden p-5">
-            <div className="mx-auto flex h-full max-w-5xl flex-col gap-8">
+          <div className="flex-1 overflow-hidden p-4">
+            <div className="mx-auto flex h-full max-w-5xl flex-col gap-4">
               {renderSkillPanel()}
               <div className="min-h-0 flex-1">
                 {renderDeckGrid(3)}
