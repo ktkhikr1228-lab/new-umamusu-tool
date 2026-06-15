@@ -83,7 +83,12 @@ export default function Home() {
     });
   }, [raceData, selectedRace]);
 
-  const effectiveStrategy = strategyOptions.includes(strategy)
+  const availableStrategies = useMemo(
+    () => new Set(strategyOptions),
+    [strategyOptions]
+  );
+
+  const effectiveStrategy = availableStrategies.has(strategy)
     ? strategy
     : strategyOptions[0] || "";
 
@@ -271,7 +276,7 @@ export default function Home() {
             目標条件
           </h1>
 
-          <div className={compact ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2" : "flex items-center gap-4"}>
+          <div className={compact ? "flex flex-col gap-2" : "flex items-center gap-4"}>
             <div className="relative min-w-0">
               <select
                 value={selectedRace}
@@ -293,22 +298,42 @@ export default function Home() {
               </span>
             </div>
 
-            {strategyOptions.length > 0 ? (
-              <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
-                {strategyOptions.map((option) => (
-                  <button
-                    key={option}
-                    onClick={() => setStrategy(option)}
-                    className={cn(
-                      "rounded px-3 py-1 text-xs font-medium transition",
-                      effectiveStrategy === option
-                        ? "material-tab-active text-card-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {option}
-                  </button>
-                ))}
+            {selectedRace ? (
+              <div
+                className={cn(
+                  "grid shrink-0 grid-cols-4 rounded-md border border-border bg-secondary p-0.5",
+                  compact ? "w-full" : "min-w-[280px]"
+                )}
+              >
+                {STRATEGY_ORDER.map((option) => {
+                  const isAvailable = availableStrategies.has(option);
+                  const isActive = effectiveStrategy === option;
+                  return (
+                    <button
+                      key={option}
+                      onClick={() => {
+                        if (isAvailable) setStrategy(option);
+                      }}
+                      disabled={!isAvailable}
+                      title={isAvailable ? option : `${option}は準備中です`}
+                      className={cn(
+                        "min-h-9 rounded px-2 py-1 text-xs font-medium transition",
+                        isActive
+                          ? "material-tab-active text-card-foreground"
+                          : isAvailable
+                            ? "text-muted-foreground hover:text-foreground"
+                            : "cursor-not-allowed text-muted-foreground/45"
+                      )}
+                    >
+                      <span className="block leading-tight">{option}</span>
+                      {!isAvailable ? (
+                        <span className="block text-[10px] font-normal leading-tight">
+                          準備中
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
