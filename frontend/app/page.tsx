@@ -262,26 +262,26 @@ export default function Home() {
         className={
           compact
             ? "flex flex-col gap-2"
-            : "flex items-center justify-between gap-4"
+            : "flex flex-wrap items-center justify-between gap-3"
         }
       >
         <div
           className={
             compact
               ? "flex flex-col gap-2"
-              : "flex min-w-0 items-center gap-4"
+              : "flex min-w-0 flex-wrap items-center gap-3"
           }
         >
           <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
             目標条件
           </h1>
 
-          <div className={compact ? "flex flex-col gap-2" : "flex items-center gap-4"}>
+          <div className={compact ? "flex flex-col gap-2" : "flex min-w-0 flex-wrap items-center gap-3"}>
             <div className="relative min-w-0">
               <select
                 value={selectedRace}
                 onChange={(event) => setSelectedRace(event.target.value)}
-                className="w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:min-w-[220px]"
+                className="w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:w-[220px] lg:w-[260px]"
               >
                 {raceOptions.length === 0 ? (
                   <option value="">レースデータなし</option>
@@ -302,7 +302,7 @@ export default function Home() {
               <div
                 className={cn(
                   "grid shrink-0 grid-cols-4 rounded-md border border-border bg-secondary p-0.5",
-                  compact ? "w-full" : "min-w-[280px]"
+                  compact ? "w-full" : "w-[280px]"
                 )}
               >
                 {STRATEGY_ORDER.map((option) => {
@@ -327,7 +327,7 @@ export default function Home() {
                     >
                       <span className="block leading-tight">{option}</span>
                       {!isAvailable ? (
-                        <span className="block text-[10px] font-normal leading-tight">
+                        <span className="block whitespace-nowrap text-[10px] font-normal leading-tight">
                           準備中
                         </span>
                       ) : null}
@@ -342,13 +342,13 @@ export default function Home() {
             )}
           </div>
 
-          <div className="flex rounded-md border border-border bg-secondary p-0.5">
+          <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
             {USAGE_MODE_OPTIONS.map((option) => (
               <button
                 key={option.value}
                 onClick={() => setUsageMode(option.value)}
                 className={cn(
-                  "rounded px-3 py-1 text-xs font-semibold transition",
+                  "min-w-[72px] whitespace-nowrap rounded px-3 py-1 text-xs font-semibold transition",
                   usageMode === option.value
                     ? "material-tab-active text-card-foreground"
                     : "text-muted-foreground hover:text-foreground"
@@ -360,24 +360,24 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <a
             href={CONTACT_FORM_URL}
             target="_blank"
             rel="noreferrer"
-            className="material-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition"
+            className="material-button-secondary flex min-w-[96px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition"
           >
             不具合・要望
           </a>
           <button
             onClick={() => setDeck([])}
-            className="material-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition"
+            className="material-button-secondary flex min-w-[92px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition"
           >
             編成クリア
           </button>
           <button
             onClick={handleSaveDeck}
-            className="material-button-primary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition"
+            className="material-button-primary flex min-w-[92px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition"
           >
             編成保存
           </button>
