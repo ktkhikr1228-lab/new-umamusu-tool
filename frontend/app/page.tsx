@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CardSearchPanel } from "../src/components/card-search-panel";
 import { DeckSlot } from "../src/components/deck-slot";
 import { SkillList } from "../src/components/skill-list";
@@ -30,9 +30,13 @@ const emptyStrategyDetail: StrategyDetail = {
 
 type MobileTab = "search" | "skills" | "deck";
 
-const USAGE_MODE_OPTIONS: Array<{ value: UsageMode; label: string }> = [
-  { value: "factor", label: "因子周回" },
-  { value: "training", label: "本育成" },
+const USAGE_MODE_OPTIONS: Array<{
+  value: UsageMode;
+  label: string;
+  shortLabel: string;
+}> = [
+  { value: "factor", label: "因子周回", shortLabel: "周回" },
+  { value: "training", label: "本育成", shortLabel: "本番" },
 ];
 
 function getApiBaseUrl() {
@@ -320,36 +324,30 @@ export default function Home() {
     </>
   );
 
-  const renderRaceHeader = (compact = false) => (
-    <header
-      className={`flex-shrink-0 border-b border-border bg-card ${
-        compact ? "px-3 py-2" : "px-6 py-4"
-      }`}
-    >
-      <div
-        className={
-          compact
-            ? "flex flex-col gap-2"
-            : "flex flex-wrap items-center justify-between gap-3"
-        }
-      >
-        <div
-          className={
-            compact
-              ? "flex flex-col gap-2"
-              : "flex min-w-0 flex-wrap items-center gap-3"
-          }
-        >
-          <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
-            目標条件
-          </h1>
+  const renderRaceHeader = (compact = false) => {
+    if (compact) {
+      return (
+        <header className="flex-shrink-0 border-b border-border bg-card px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="whitespace-nowrap text-sm font-semibold text-card-foreground">
+              目標条件
+            </h1>
+            <a
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="material-button-secondary flex min-w-[56px] items-center justify-center whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-semibold transition"
+            >
+              要望
+            </a>
+          </div>
 
-          <div className={compact ? "flex flex-col gap-2" : "flex min-w-0 flex-wrap items-center gap-3"}>
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <div className="relative min-w-0">
               <select
                 value={selectedRace}
                 onChange={(event) => setSelectedRace(event.target.value)}
-                className="w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:w-[220px] lg:w-[260px]"
+                className="h-9 w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring"
               >
                 {raceOptions.length === 0 ? (
                   <option value="">レースデータなし</option>
@@ -366,13 +364,27 @@ export default function Home() {
               </span>
             </div>
 
+            <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
+              {USAGE_MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setUsageMode(option.value)}
+                  className={cn(
+                    "min-w-[48px] whitespace-nowrap rounded px-2 py-1 text-xs font-semibold transition",
+                    usageMode === option.value
+                      ? "material-tab-active text-card-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {option.shortLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-2">
             {selectedRace ? (
-              <div
-                className={cn(
-                  "grid shrink-0 grid-cols-4 rounded-md border border-border bg-secondary p-0.5",
-                  compact ? "w-full" : "w-[280px]"
-                )}
-              >
+              <div className="grid w-full grid-cols-4 rounded-md border border-border bg-secondary p-0.5">
                 {STRATEGY_ORDER.map((option) => {
                   const isAvailable = availableStrategies.has(option);
                   const isActive = effectiveStrategy === option;
@@ -385,7 +397,7 @@ export default function Home() {
                       disabled={!isAvailable}
                       title={isAvailable ? option : `${option}は準備中です`}
                       className={cn(
-                        "min-h-9 rounded px-2 py-1 text-xs font-medium transition",
+                        "min-h-8 rounded px-1.5 py-0.5 text-xs font-medium transition",
                         isActive
                           ? "material-tab-active text-card-foreground"
                           : isAvailable
@@ -395,7 +407,7 @@ export default function Home() {
                     >
                       <span className="block leading-tight">{option}</span>
                       {!isAvailable ? (
-                        <span className="block whitespace-nowrap text-[10px] font-normal leading-tight">
+                        <span className="block whitespace-nowrap text-[9px] font-normal leading-tight">
                           準備中
                         </span>
                       ) : null}
@@ -404,44 +416,116 @@ export default function Home() {
                 })}
               </div>
             ) : (
-              <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
+              <span className="block rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
                 脚質なし
               </span>
             )}
           </div>
+        </header>
+      );
+    }
 
-          <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
-            {USAGE_MODE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setUsageMode(option.value)}
-                className={cn(
-                  "min-w-[72px] whitespace-nowrap rounded px-3 py-1 text-xs font-semibold transition",
-                  usageMode === option.value
-                    ? "material-tab-active text-card-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
+    return (
+      <header className="flex-shrink-0 border-b border-border bg-card px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
+              目標条件
+            </h1>
+
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <div className="relative min-w-0">
+                <select
+                  value={selectedRace}
+                  onChange={(event) => setSelectedRace(event.target.value)}
+                  className="w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:w-[220px] lg:w-[260px]"
+                >
+                  {raceOptions.length === 0 ? (
+                    <option value="">レースデータなし</option>
+                  ) : (
+                    raceOptions.map((race) => (
+                      <option key={race} value={race}>
+                        {race}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  v
+                </span>
+              </div>
+
+              {selectedRace ? (
+                <div className="grid w-[280px] shrink-0 grid-cols-4 rounded-md border border-border bg-secondary p-0.5">
+                  {STRATEGY_ORDER.map((option) => {
+                    const isAvailable = availableStrategies.has(option);
+                    const isActive = effectiveStrategy === option;
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => {
+                          if (isAvailable) setStrategy(option);
+                        }}
+                        disabled={!isAvailable}
+                        title={isAvailable ? option : `${option}は準備中です`}
+                        className={cn(
+                          "min-h-9 rounded px-2 py-1 text-xs font-medium transition",
+                          isActive
+                            ? "material-tab-active text-card-foreground"
+                            : isAvailable
+                              ? "text-muted-foreground hover:text-foreground"
+                              : "cursor-not-allowed text-muted-foreground/45"
+                        )}
+                      >
+                        <span className="block leading-tight">{option}</span>
+                        {!isAvailable ? (
+                          <span className="block whitespace-nowrap text-[10px] font-normal leading-tight">
+                            準備中
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                  脚質なし
+                </span>
+              )}
+            </div>
+
+            <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
+              {USAGE_MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setUsageMode(option.value)}
+                  className={cn(
+                    "min-w-[72px] whitespace-nowrap rounded px-3 py-1 text-xs font-semibold transition",
+                    usageMode === option.value
+                      ? "material-tab-active text-card-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <a
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="material-button-secondary flex min-w-[96px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition"
+            >
+              不具合・要望
+            </a>
           </div>
         </div>
-
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <a
-            href={CONTACT_FORM_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="material-button-secondary flex min-w-[96px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition"
-          >
-            不具合・要望
-          </a>
-          {compact ? renderDeckActionButtons(true) : null}
-        </div>
-      </div>
-    </header>
-  );
+      </header>
+    );
+  };
 
   const renderSkillPanel = () => (
     <section className="flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card px-4 py-3">
@@ -449,15 +533,31 @@ export default function Home() {
     </section>
   );
 
-  const renderDeckGrid = (columns: 2 | 3) => (
+  const renderDeckGrid = (columns: 2 | 3, headerActions?: ReactNode) => (
     <section className="min-h-0 rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-card-foreground">
-          現在の編成
-        </h2>
-        <span className="text-xs font-semibold text-card-foreground">
-          {deck.length}/6枚
-        </span>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        {headerActions ? (
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-card-foreground">
+              現在の編成
+            </h2>
+            <span className="text-xs font-semibold text-card-foreground">
+              {deck.length}/6枚
+            </span>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-sm font-semibold text-card-foreground">
+              現在の編成
+            </h2>
+            <span className="text-xs font-semibold text-card-foreground">
+              {deck.length}/6枚
+            </span>
+          </>
+        )}
+        {headerActions ? (
+          <div className="flex shrink-0 items-center gap-2">{headerActions}</div>
+        ) : null}
       </div>
       <div className={columns === 2 ? "grid grid-cols-2 gap-3" : "grid grid-cols-3 gap-3"}>
         {Array.from({ length: 6 }).map((_, index) => (
@@ -535,7 +635,7 @@ export default function Home() {
 
           {mobileTab === "deck" ? (
             <div className="custom-scrollbar h-full overflow-y-auto">
-              {renderDeckGrid(2)}
+              {renderDeckGrid(2, renderDeckActionButtons())}
             </div>
           ) : null}
         </main>
