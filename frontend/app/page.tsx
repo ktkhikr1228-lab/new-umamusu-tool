@@ -18,6 +18,7 @@ import raceDataRaw from "../src/data/race_data.json";
 const STRATEGY_ORDER = ["逃げ", "先行", "差し", "追込"];
 const CONTACT_FORM_URL =
   "https://docs.google.com/forms/d/e/1FAIpQLSfGUiRhR6bkJ3V54ywE-D9R_s5LJKAlppjFP2qt4YWFaYucuA/viewform";
+const DECK_OWNER_ID_STORAGE_KEY = "uma-tool-deck-owner-id";
 const INITIAL_CARDS = cardsData as SupportCard[];
 const INITIAL_RACE_DATA = raceDataRaw as unknown as RaceData;
 const INITIAL_RACE = Object.keys(INITIAL_RACE_DATA)[0] || "";
@@ -47,6 +48,20 @@ function getApiBaseUrl() {
   }
 
   return envUrl;
+}
+
+function getDeckOwnerId() {
+  if (typeof window === "undefined") return "";
+
+  const existingId = window.localStorage.getItem(DECK_OWNER_ID_STORAGE_KEY);
+  if (existingId) return existingId;
+
+  const nextId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(DECK_OWNER_ID_STORAGE_KEY, nextId);
+  return nextId;
 }
 
 function normalizeCardsPayload(payload: unknown) {
@@ -115,6 +130,21 @@ export default function Home() {
               : Object.keys(racePayload)[0] || ""
           );
         }
+
+        const ownerId = getDeckOwnerId();
+        if (ownerId) {
+          const deckResponse = await fetch(
+            `/api/deck?ownerId=${encodeURIComponent(ownerId)}`
+          );
+          if (deckResponse.ok) {
+            const deckPayload = (await deckResponse.json()) as {
+              deck?: unknown;
+            };
+            if (Array.isArray(deckPayload.deck)) {
+              setDeck(deckPayload.deck as SupportCard[]);
+            }
+          }
+        }
       } catch (error) {
         console.error("Failed to fetch bundled data API:", error);
       }
@@ -123,8 +153,23 @@ export default function Home() {
     initializeData();
   }, []);
 
-  const handleSaveDeck = () => {
-    alert("このバージョンでは編成の保存機能は無効化されています。");
+  const handleSaveDeck = async () => {
+    try {
+      const ownerId = getDeckOwnerId();
+      if (!ownerId) throw new Error("Missing deck owner id.");
+
+      const response = await fetch("/api/deck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId, deck }),
+      });
+
+      if (!response.ok) throw new Error("Failed to save deck.");
+      alert("編成を保存しました。");
+    } catch (error) {
+      console.error("Failed to save deck:", error);
+      alert("編成の保存に失敗しました。DB設定を確認してください。");
+    }
   };
 
   const currentStrategyDetail = useMemo(() => {

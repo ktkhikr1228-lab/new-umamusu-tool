@@ -2,14 +2,14 @@
 
 ウマ娘の因子周回向けに、レース条件ごとのおすすめスキルを見ながらサポートカード編成を組むためのWebツールです。
 
-最終更新: 2026-06-13
+最終更新: 2026-06-17
 
 ## 現在の状態
 
 - 公開先: https://new-umamusu-tool.vercel.app/
 - 主な画面: サポカ検索、目標条件、スキル確認、現在の編成
 - 対象ユーザー: 初心者から中級者を優先
-- 保存機能: ユーザー別保存はまだ保留中
+- 保存機能: Prisma + PostgreSQLで匿名IDごとの編成保存に対応。`DATABASE_URL` 未設定時は表示のみ
 - お問い合わせ: Googleフォームへのリンクを設置
 
 ## 現在できること
@@ -20,6 +20,7 @@
 - カードタイプで絞り込む
 - 不足スキルを持つカードを優先して並び替える
 - 6枚のサポカ編成を画面上で組む
+- DB設定済み環境では編成を保存・復元する
 - 因子周回 / 本育成のモードを切り替える
 
 ## 因子周回モードの扱い
@@ -38,7 +39,8 @@
 | --- | --- |
 | Frontend | Next.js 16 / React 19 / TypeScript / Tailwind CSS |
 | API | Next.js Route Handlers |
-| Backend | FastAPI。ローカル検証や補助API用 |
+| Database | Prisma / PostgreSQL。現在は編成保存用 |
+| Backend | FastAPI。ローカル検証や補助スクリプト用 |
 | Hosting | Vercel |
 | Data | `frontend/src/data/*.json` |
 
@@ -47,7 +49,8 @@
 ```text
 frontend/
   app/                  Next.js app router
-  app/api/              Vercel上で使う簡易API
+  app/api/              Vercel上で使うAPI
+  prisma/               Prisma schema
   src/components/       UIコンポーネント
   src/data/             サポカ、レース条件、除外スキルのJSON
   src/lib/              型定義と共通ロジック
@@ -82,6 +85,23 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 必要に応じてフロント側で `NEXT_PUBLIC_API_URL` を設定します。
+
+## 編成保存
+
+編成保存はNext.jsの `/api/deck` で扱います。ブラウザに匿名IDを作り、そのIDごとに1つの編成を保存します。
+
+保存を有効にするにはPostgreSQLの接続文字列を `DATABASE_URL` に設定します。
+
+```powershell
+cd frontend
+$env:DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
+npm run prisma:migrate -- --name init
+npm run dev
+```
+
+本番DBに既存マイグレーションを適用する場合は、`DATABASE_URL` を設定した状態で `npm run prisma:deploy` を実行します。
+
+Vercel本番で保存を使う場合も、同じ `DATABASE_URL` を環境変数に追加します。`DATABASE_URL` が未設定でもカード検索やレース条件表示は動きますが、保存ボタンは失敗します。
 
 ## データ更新
 
