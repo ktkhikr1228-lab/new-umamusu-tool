@@ -32,8 +32,17 @@ TIER_PRIORITY = {
     "recommended": 1,
     "super_recommended": 2,
 }
+TIER_OVERRIDES = {
+    ("東京 芝 2400m", "逃げ", "盤石の構え"): "super_recommended",
+    ("東京 芝 2400m", "逃げ", "逃げ切り体勢"): "super_recommended",
+    ("東京 芝 2400m", "差し", "大立ち回り"): "recommended",
+    ("東京 芝 2400m", "差し", "巨歩"): "recommended",
+    ("東京 芝 2400m", "差し", "聖女の挑戦"): "recommended",
+    ("東京 芝 2400m", "差し", "追尾"): "recommended",
+}
 GUIDE_ONLY_SKILLS = {
     "\u7cbe\u795e\u529b",
+    "\u51db\u7136\u3068",
 }
 
 # High-confidence OCR fixes seen in trainer-guide screenshots.
@@ -51,6 +60,10 @@ COMMON_FIXES = {
     "\u5343\u4e21\u4e07\u92ad": "\u5343\u921e\u4e07\u9460",
     "\u66c7\u308a\u306a\u3057": "\u6182\u3044\u306a\u3057",
     "\u66c7\u71d5\u7adc\u5909": "\u96f2\u84b8\u7adc\u5909",
+    "\u6cf0\u7136\u3068": "\u6cf0\u7136\u81ea\u82e5",
+    "\u89e3\u653e\u3064\u60c5\u5ff5": "\u89e3\u304d\u653e\u3064\u60c5\u5ff5",
+    "\u8ffd\u3044\u5bc4\u308b\u8db3\u97f3": "\u9019\u3044\u5bc4\u308b\u8db3\u97f3",
+    "\u9cf4\u547c\u306e\u547c\u5438": "\u963f\u543d\u306e\u547c\u5438",
 }
 
 
@@ -182,7 +195,7 @@ def build_skill_report(
     tier_conflicts = {
         (race, strategy, skill): tiers
         for (race, strategy, skill), tiers in tiers_by_context.items()
-        if len(tiers) > 1 and skill
+        if len(tiers) > 1 and skill and (race, strategy, skill) not in TIER_OVERRIDES
     }
 
     report_rows: list[dict[str, str]] = []
@@ -219,7 +232,16 @@ def resolve_tier_conflicts(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             row.get("strategy", ""),
             row.get("skill", ""),
         )
+        override_tier = TIER_OVERRIDES.get(key)
+        if override_tier and row.get("tier", "") != override_tier:
+            continue
+
         if key not in index_by_key:
+            if override_tier:
+                row["memo"] = append_memo(
+                    row.get("memo", ""),
+                    f"tier_override:{override_tier}",
+                )
             index_by_key[key] = len(result)
             result.append(row)
             continue
