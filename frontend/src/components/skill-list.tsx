@@ -81,6 +81,7 @@ export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
           tone="super"
           skills={strategyDetail.super_recommended}
           deckSkills={deckSkills}
+          scrollable
         />
       </div>
       <div className="h-full min-h-0 overflow-hidden rounded-md bg-background/40 p-2">

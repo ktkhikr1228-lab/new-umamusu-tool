@@ -600,10 +600,7 @@ export default function Home() {
   return (
     <>
       <div className="hidden h-screen overflow-hidden bg-background font-sans text-foreground md:flex">
-        <CardSearchPanel
-          {...cardSearchPanelProps}
-          headerActions={renderDeckActionButtons()}
-        />
+        <CardSearchPanel {...cardSearchPanelProps} />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {renderRaceHeader()}
@@ -612,7 +609,7 @@ export default function Home() {
             <div className="mx-auto flex h-full max-w-5xl flex-col gap-4">
               {renderSkillPanel()}
               <div className="min-h-0 flex-1">
-                {renderDeckGrid(3)}
+                {renderDeckGrid(3, renderDeckActionButtons(true))}
               </div>
             </div>
           </div>
