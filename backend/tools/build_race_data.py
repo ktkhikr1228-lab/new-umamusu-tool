@@ -54,6 +54,24 @@ def append_unique(values: list[str], skill: str) -> None:
         values.append(skill)
 
 
+def set_skill_tier(strategy_detail: dict[str, Any], tier: str, skill: str) -> None:
+    for existing_tier in ("super_recommended", "recommended"):
+        existing_values = strategy_detail.setdefault(existing_tier, [])
+        if not isinstance(existing_values, list):
+            strategy_detail[existing_tier] = []
+            existing_values = strategy_detail[existing_tier]
+        if existing_tier != tier:
+            strategy_detail[existing_tier] = [
+                value for value in existing_values if value != skill
+            ]
+
+    target = strategy_detail.setdefault(tier, [])
+    if not isinstance(target, list):
+        strategy_detail[tier] = []
+        target = strategy_detail[tier]
+    append_unique(target, skill)
+
+
 def empty_strategy() -> dict[str, list[str]]:
     return {"super_recommended": [], "recommended": []}
 
@@ -102,11 +120,7 @@ def apply_csv(
             if strategy not in data[race] or not isinstance(data[race][strategy], dict):
                 data[race][strategy] = empty_strategy()
 
-            target = data[race][strategy].setdefault(tier, [])
-            if not isinstance(target, list):
-                data[race][strategy][tier] = []
-                target = data[race][strategy][tier]
-            append_unique(target, skill)
+            set_skill_tier(data[race][strategy], tier, skill)
             count += 1
 
     return data, count
