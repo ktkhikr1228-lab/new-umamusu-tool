@@ -8,6 +8,7 @@ import mimetypes
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -36,6 +37,18 @@ TIER_ALIASES = {
     "おすすめ": "recommended",
     "おすすめスキル": "recommended",
 }
+
+
+class GeminiRateLimitError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        retry_after: float | None = None,
+        quota_scope: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.quota_scope = quota_scope
 
 
 def list_images(input_dir: Path) -> list[Path]:
@@ -96,6 +109,59 @@ def make_prompt(race: str, strategy: str) -> str:
 """.strip()
 
 
+def extract_retry_after_seconds(body: str) -> float | None:
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        data = None
+
+    if isinstance(data, dict):
+        details = data.get("error", {}).get("details", [])
+        if isinstance(details, list):
+            for detail in details:
+                if not isinstance(detail, dict):
+                    continue
+                retry_delay = detail.get("retryDelay")
+                if isinstance(retry_delay, str):
+                    match = re.search(r"([\d.]+)s", retry_delay)
+                    if match:
+                        return float(match.group(1))
+
+    match = re.search(r"retry in ([\d.]+)s", body, re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def extract_quota_scope(body: str) -> str | None:
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        data = None
+
+    quota_ids: list[str] = []
+    if isinstance(data, dict):
+        details = data.get("error", {}).get("details", [])
+        if isinstance(details, list):
+            for detail in details:
+                if not isinstance(detail, dict):
+                    continue
+                violations = detail.get("violations")
+                if not isinstance(violations, list):
+                    continue
+                for violation in violations:
+                    if isinstance(violation, dict):
+                        quota_id = violation.get("quotaId")
+                        if isinstance(quota_id, str):
+                            quota_ids.append(quota_id)
+
+    if any("PerDay" in quota_id for quota_id in quota_ids):
+        return "day"
+    if any("PerMinute" in quota_id for quota_id in quota_ids):
+        return "minute"
+    return None
+
+
 def call_gemini_for_image(
     image_path: Path,
     *,
@@ -144,6 +210,12 @@ def call_gemini_for_image(
             response_data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
+        if error.code == 429:
+            raise GeminiRateLimitError(
+                f"Gemini API error {error.code}: {body}",
+                retry_after=extract_retry_after_seconds(body),
+                quota_scope=extract_quota_scope(body),
+            ) from error
         raise RuntimeError(f"Gemini API error {error.code}: {body}") from error
 
     parts = (
@@ -261,6 +333,49 @@ def dedupe_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return result
 
 
+def processed_source_files(rows: list[dict[str, str]], race: str, strategy: str) -> set[str]:
+    return {
+        row.get("source_file", "")
+        for row in rows
+        if row.get("race") == race and row.get("strategy") == strategy and row.get("source_file")
+    }
+
+
+def call_gemini_with_retries(
+    image_path: Path,
+    *,
+    api_key: str,
+    model: str,
+    race: str,
+    strategy: str,
+    max_retries: int,
+    delay_seconds: float,
+) -> str:
+    for attempt in range(max_retries + 1):
+        try:
+            return call_gemini_for_image(
+                image_path,
+                api_key=api_key,
+                model=model,
+                race=race,
+                strategy=strategy,
+            )
+        except GeminiRateLimitError as error:
+            if error.quota_scope == "day":
+                raise RuntimeError(
+                    "Gemini daily free-tier quota is exhausted for this model. "
+                    "Try again after the daily quota resets, use another API key/project, "
+                    "or enable billing. Completed images have already been saved."
+                ) from error
+            if attempt >= max_retries:
+                raise
+            wait_seconds = max(error.retry_after or 0, delay_seconds, 15)
+            print(f"Rate limited. Waiting {wait_seconds:.0f}s before retry...")
+            time.sleep(wait_seconds)
+
+    raise RuntimeError(f"Gemini retry loop failed for {image_path.name}.")
+
+
 def extract(args: argparse.Namespace) -> int:
     input_dir = args.input_dir.resolve()
     images = list_images(input_dir)
@@ -277,6 +392,7 @@ def extract(args: argparse.Namespace) -> int:
                 "images": [str(path.relative_to(input_dir)) for path in images],
                 "output": str(output_path),
                 "model": args.model,
+                "delay_seconds": args.delay_seconds,
             },
             ensure_ascii=False,
             indent=2,
@@ -288,18 +404,31 @@ def extract(args: argparse.Namespace) -> int:
         raise RuntimeError("GEMINI_API_KEY is not set. Pass --api-key or set the environment variable.")
 
     rows = read_existing_rows(output_path) if args.append else []
+    processed_sources = processed_source_files(rows, args.race, args.strategy) if args.append else set()
+    request_count = 0
 
     for image_path in images:
+        source_file = str(image_path.relative_to(input_dir))
+        if source_file in processed_sources and not args.force:
+            print(f"Skipping already processed image: {source_file}")
+            continue
+
+        if request_count > 0 and args.delay_seconds > 0:
+            print(f"Waiting {args.delay_seconds:.0f}s to avoid rate limits...")
+            time.sleep(args.delay_seconds)
+
         print(f"Extracting: {image_path.name}")
-        response_text = call_gemini_for_image(
+        response_text = call_gemini_with_retries(
             image_path,
             api_key=api_key,
             model=args.model,
             race=args.race,
             strategy=args.strategy,
+            max_retries=args.max_retries,
+            delay_seconds=args.delay_seconds,
         )
+        request_count += 1
         extracted_rows = parse_model_rows(response_text)
-        source_file = str(image_path.relative_to(input_dir))
         for row in extracted_rows:
             rows.append(
                 {
@@ -312,6 +441,10 @@ def extract(args: argparse.Namespace) -> int:
                     "memo": "",
                 }
             )
+        rows = dedupe_rows(rows)
+        write_rows(output_path, rows)
+        processed_sources.add(source_file)
+        print(f"Saved progress: {len(rows)} rows")
 
     rows = dedupe_rows(rows)
     write_rows(output_path, rows)
@@ -330,8 +463,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--append", action="store_true", help="Append to an existing CSV before de-duping.")
     parser.add_argument("--status", default="draft", help="CSV status value for extracted rows.")
     parser.add_argument("--api-key", help="Gemini API key. Defaults to GEMINI_API_KEY.")
-    parser.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-3.1-pro"))
+    parser.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"))
     parser.add_argument("--limit", type=int, help="Process only the first N images.")
+    parser.add_argument(
+        "--delay-seconds",
+        type=float,
+        default=float(os.environ.get("GEMINI_REQUEST_DELAY_SECONDS", "13")),
+        help="Seconds to wait between Gemini requests. Use 13+ for the free tier.",
+    )
+    parser.add_argument("--max-retries", type=int, default=3, help="Retry count for Gemini 429 rate limits.")
+    parser.add_argument("--force", action="store_true", help="Reprocess images even when --append finds them in the output CSV.")
     parser.add_argument("--dry-run", action="store_true", help="List images and output path without calling Gemini.")
     return parser
 

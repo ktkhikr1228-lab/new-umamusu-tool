@@ -6,7 +6,7 @@
 
 - Vercelで公開するメインアプリ
 - サポカ検索、レース条件選択、スキル表示、編成表示を担当
-- `app/api/*` で静的JSONを返す簡易APIを提供
+- `app/api/*` で静的JSONと編成保存APIを提供
 - FastAPIが無くてもVercel上で表示できる構成
 
 ## 起動
@@ -31,6 +31,9 @@ npm run dev -- --port 3001
 ```powershell
 npm run lint
 npm run build
+npm run prisma:generate
+npm run prisma:migrate -- --name init
+npm run prisma:deploy
 ```
 
 ## 環境変数
@@ -45,11 +48,21 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 本番Vercelで `NEXT_PUBLIC_API_URL` が未設定の場合は、Next.js内の `/api/cards` と `/api/race-data` を使います。
 
+編成保存を使う場合はPostgreSQLの接続先を設定します。
+
+```text
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+```
+
+`DATABASE_URL` が未設定でも画面表示は動きますが、`/api/deck` の保存は失敗します。
+
 ## 主要ファイル
 
 | 目的 | ファイル |
 | --- | --- |
 | メイン画面 | `app/page.tsx` |
+| 編成保存API | `app/api/deck/route.ts` |
+| Prisma設定 | `prisma/schema.prisma`, `prisma.config.ts` |
 | 全体スタイル | `app/globals.css` |
 | サポカ検索 | `src/components/card-search-panel.tsx` |
 | 編成スロット | `src/components/deck-slot.tsx` |

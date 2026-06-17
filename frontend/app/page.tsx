@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CardSearchPanel } from "../src/components/card-search-panel";
 import { DeckSlot } from "../src/components/deck-slot";
 import { SkillList } from "../src/components/skill-list";
@@ -18,6 +18,7 @@ import raceDataRaw from "../src/data/race_data.json";
 const STRATEGY_ORDER = ["逃げ", "先行", "差し", "追込"];
 const CONTACT_FORM_URL =
   "https://docs.google.com/forms/d/e/1FAIpQLSfGUiRhR6bkJ3V54ywE-D9R_s5LJKAlppjFP2qt4YWFaYucuA/viewform";
+const DECK_OWNER_ID_STORAGE_KEY = "uma-tool-deck-owner-id";
 const INITIAL_CARDS = cardsData as SupportCard[];
 const INITIAL_RACE_DATA = raceDataRaw as unknown as RaceData;
 const INITIAL_RACE = Object.keys(INITIAL_RACE_DATA)[0] || "";
@@ -29,9 +30,13 @@ const emptyStrategyDetail: StrategyDetail = {
 
 type MobileTab = "search" | "skills" | "deck";
 
-const USAGE_MODE_OPTIONS: Array<{ value: UsageMode; label: string }> = [
-  { value: "factor", label: "因子周回" },
-  { value: "training", label: "本育成" },
+const USAGE_MODE_OPTIONS: Array<{
+  value: UsageMode;
+  label: string;
+  shortLabel: string;
+}> = [
+  { value: "factor", label: "因子周回", shortLabel: "周回" },
+  { value: "training", label: "本育成", shortLabel: "本番" },
 ];
 
 function getApiBaseUrl() {
@@ -47,6 +52,20 @@ function getApiBaseUrl() {
   }
 
   return envUrl;
+}
+
+function getDeckOwnerId() {
+  if (typeof window === "undefined") return "";
+
+  const existingId = window.localStorage.getItem(DECK_OWNER_ID_STORAGE_KEY);
+  if (existingId) return existingId;
+
+  const nextId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(DECK_OWNER_ID_STORAGE_KEY, nextId);
+  return nextId;
 }
 
 function normalizeCardsPayload(payload: unknown) {
@@ -83,7 +102,12 @@ export default function Home() {
     });
   }, [raceData, selectedRace]);
 
-  const effectiveStrategy = strategyOptions.includes(strategy)
+  const availableStrategies = useMemo(
+    () => new Set(strategyOptions),
+    [strategyOptions]
+  );
+
+  const effectiveStrategy = availableStrategies.has(strategy)
     ? strategy
     : strategyOptions[0] || "";
 
@@ -110,6 +134,21 @@ export default function Home() {
               : Object.keys(racePayload)[0] || ""
           );
         }
+
+        const ownerId = getDeckOwnerId();
+        if (ownerId) {
+          const deckResponse = await fetch(
+            `/api/deck?ownerId=${encodeURIComponent(ownerId)}`
+          );
+          if (deckResponse.ok) {
+            const deckPayload = (await deckResponse.json()) as {
+              deck?: unknown;
+            };
+            if (Array.isArray(deckPayload.deck)) {
+              setDeck(deckPayload.deck as SupportCard[]);
+            }
+          }
+        }
       } catch (error) {
         console.error("Failed to fetch bundled data API:", error);
       }
@@ -118,8 +157,23 @@ export default function Home() {
     initializeData();
   }, []);
 
-  const handleSaveDeck = () => {
-    alert("このバージョンでは編成の保存機能は無効化されています。");
+  const handleSaveDeck = async () => {
+    try {
+      const ownerId = getDeckOwnerId();
+      if (!ownerId) throw new Error("Missing deck owner id.");
+
+      const response = await fetch("/api/deck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId, deck }),
+      });
+
+      if (!response.ok) throw new Error("Failed to save deck.");
+      alert("編成を保存しました。");
+    } catch (error) {
+      console.error("Failed to save deck:", error);
+      alert("編成の保存に失敗しました。DB設定を確認してください。");
+    }
   };
 
   const currentStrategyDetail = useMemo(() => {
@@ -247,36 +301,53 @@ export default function Home() {
     onAddCard: addToDeck,
   };
 
-  const renderRaceHeader = (compact = false) => (
-    <header
-      className={`flex-shrink-0 border-b border-border bg-card ${
-        compact ? "px-3 py-2" : "px-6 py-4"
-      }`}
-    >
-      <div
-        className={
-          compact
-            ? "flex flex-col gap-2"
-            : "flex items-center justify-between gap-4"
-        }
+  const renderDeckActionButtons = (compact = false) => (
+    <>
+      <button
+        onClick={() => setDeck([])}
+        className={cn(
+          "material-button-secondary flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-semibold transition",
+          compact ? "min-w-[92px] px-3 py-1.5" : "min-w-[64px] px-2.5 py-1.5"
+        )}
       >
-        <div
-          className={
-            compact
-              ? "flex flex-col gap-2"
-              : "flex min-w-0 items-center gap-4"
-          }
-        >
-          <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
-            目標条件
-          </h1>
+        {compact ? "編成クリア" : "クリア"}
+      </button>
+      <button
+        onClick={handleSaveDeck}
+        className={cn(
+          "material-button-primary flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-bold transition",
+          compact ? "min-w-[92px] px-3 py-1.5" : "min-w-[64px] px-2.5 py-1.5"
+        )}
+      >
+        {compact ? "編成保存" : "保存"}
+      </button>
+    </>
+  );
 
-          <div className={compact ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2" : "flex items-center gap-4"}>
+  const renderRaceHeader = (compact = false) => {
+    if (compact) {
+      return (
+        <header className="flex-shrink-0 border-b border-border bg-card px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="whitespace-nowrap text-sm font-semibold text-card-foreground">
+              目標条件
+            </h1>
+            <a
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="material-button-secondary flex min-w-[56px] items-center justify-center whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-semibold transition"
+            >
+              要望
+            </a>
+          </div>
+
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <div className="relative min-w-0">
               <select
                 value={selectedRace}
                 onChange={(event) => setSelectedRace(event.target.value)}
-                className="w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:min-w-[220px]"
+                className="h-9 w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring"
               >
                 {raceOptions.length === 0 ? (
                   <option value="">レースデータなし</option>
@@ -293,73 +364,168 @@ export default function Home() {
               </span>
             </div>
 
-            {strategyOptions.length > 0 ? (
-              <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
-                {strategyOptions.map((option) => (
-                  <button
-                    key={option}
-                    onClick={() => setStrategy(option)}
-                    className={cn(
-                      "rounded px-3 py-1 text-xs font-medium transition",
-                      effectiveStrategy === option
-                        ? "material-tab-active text-card-foreground"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {option}
-                  </button>
-                ))}
+            <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
+              {USAGE_MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setUsageMode(option.value)}
+                  className={cn(
+                    "min-w-[48px] whitespace-nowrap rounded px-2 py-1 text-xs font-semibold transition",
+                    usageMode === option.value
+                      ? "material-tab-active text-card-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {option.shortLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-2">
+            {selectedRace ? (
+              <div className="grid w-full grid-cols-4 rounded-md border border-border bg-secondary p-0.5">
+                {STRATEGY_ORDER.map((option) => {
+                  const isAvailable = availableStrategies.has(option);
+                  const isActive = effectiveStrategy === option;
+                  return (
+                    <button
+                      key={option}
+                      onClick={() => {
+                        if (isAvailable) setStrategy(option);
+                      }}
+                      disabled={!isAvailable}
+                      title={isAvailable ? option : `${option}は準備中です`}
+                      className={cn(
+                        "min-h-8 rounded px-1.5 py-0.5 text-xs font-medium transition",
+                        isActive
+                          ? "material-tab-active text-card-foreground"
+                          : isAvailable
+                            ? "text-muted-foreground hover:text-foreground"
+                            : "cursor-not-allowed text-muted-foreground/45"
+                      )}
+                    >
+                      <span className="block leading-tight">{option}</span>
+                      {!isAvailable ? (
+                        <span className="block whitespace-nowrap text-[9px] font-normal leading-tight">
+                          準備中
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
-              <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
+              <span className="block rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
                 脚質なし
               </span>
             )}
           </div>
+        </header>
+      );
+    }
 
-          <div className="flex rounded-md border border-border bg-secondary p-0.5">
-            {USAGE_MODE_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setUsageMode(option.value)}
-                className={cn(
-                  "rounded px-3 py-1 text-xs font-semibold transition",
-                  usageMode === option.value
-                    ? "material-tab-active text-card-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
+    return (
+      <header className="flex-shrink-0 border-b border-border bg-card px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <h1 className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-card-foreground">
+              目標条件
+            </h1>
+
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <div className="relative min-w-0">
+                <select
+                  value={selectedRace}
+                  onChange={(event) => setSelectedRace(event.target.value)}
+                  className="w-full min-w-0 appearance-none truncate whitespace-nowrap rounded-md border border-input bg-card px-3 py-1.5 pr-8 text-sm font-medium outline-none focus:ring-2 focus:ring-ring md:w-[220px] lg:w-[260px]"
+                >
+                  {raceOptions.length === 0 ? (
+                    <option value="">レースデータなし</option>
+                  ) : (
+                    raceOptions.map((race) => (
+                      <option key={race} value={race}>
+                        {race}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  v
+                </span>
+              </div>
+
+              {selectedRace ? (
+                <div className="grid w-[280px] shrink-0 grid-cols-4 rounded-md border border-border bg-secondary p-0.5">
+                  {STRATEGY_ORDER.map((option) => {
+                    const isAvailable = availableStrategies.has(option);
+                    const isActive = effectiveStrategy === option;
+                    return (
+                      <button
+                        key={option}
+                        onClick={() => {
+                          if (isAvailable) setStrategy(option);
+                        }}
+                        disabled={!isAvailable}
+                        title={isAvailable ? option : `${option}は準備中です`}
+                        className={cn(
+                          "min-h-9 rounded px-2 py-1 text-xs font-medium transition",
+                          isActive
+                            ? "material-tab-active text-card-foreground"
+                            : isAvailable
+                              ? "text-muted-foreground hover:text-foreground"
+                              : "cursor-not-allowed text-muted-foreground/45"
+                        )}
+                      >
+                        <span className="block leading-tight">{option}</span>
+                        {!isAvailable ? (
+                          <span className="block whitespace-nowrap text-[10px] font-normal leading-tight">
+                            準備中
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                  脚質なし
+                </span>
+              )}
+            </div>
+
+            <div className="flex shrink-0 rounded-md border border-border bg-secondary p-0.5">
+              {USAGE_MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setUsageMode(option.value)}
+                  className={cn(
+                    "min-w-[72px] whitespace-nowrap rounded px-3 py-1 text-xs font-semibold transition",
+                    usageMode === option.value
+                      ? "material-tab-active text-card-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <a
+              href={CONTACT_FORM_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="material-button-secondary flex min-w-[96px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition"
+            >
+              不具合・要望
+            </a>
           </div>
         </div>
-
-        <div className="flex items-center gap-2">
-          <a
-            href={CONTACT_FORM_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="material-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition"
-          >
-            不具合・要望
-          </a>
-          <button
-            onClick={() => setDeck([])}
-            className="material-button-secondary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition"
-          >
-            編成クリア
-          </button>
-          <button
-            onClick={handleSaveDeck}
-            className="material-button-primary flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition"
-          >
-            編成保存
-          </button>
-        </div>
-      </div>
-    </header>
-  );
+      </header>
+    );
+  };
 
   const renderSkillPanel = () => (
     <section className="flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card px-4 py-3">
@@ -367,15 +533,31 @@ export default function Home() {
     </section>
   );
 
-  const renderDeckGrid = (columns: 2 | 3) => (
+  const renderDeckGrid = (columns: 2 | 3, headerActions?: ReactNode) => (
     <section className="min-h-0 rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-card-foreground">
-          現在の編成
-        </h2>
-        <span className="text-xs font-semibold text-card-foreground">
-          {deck.length}/6枚
-        </span>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        {headerActions ? (
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-card-foreground">
+              現在の編成
+            </h2>
+            <span className="text-xs font-semibold text-card-foreground">
+              {deck.length}/6枚
+            </span>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-sm font-semibold text-card-foreground">
+              現在の編成
+            </h2>
+            <span className="text-xs font-semibold text-card-foreground">
+              {deck.length}/6枚
+            </span>
+          </>
+        )}
+        {headerActions ? (
+          <div className="flex shrink-0 items-center gap-2">{headerActions}</div>
+        ) : null}
       </div>
       <div className={columns === 2 ? "grid grid-cols-2 gap-3" : "grid grid-cols-3 gap-3"}>
         {Array.from({ length: 6 }).map((_, index) => (
@@ -418,13 +600,16 @@ export default function Home() {
   return (
     <>
       <div className="hidden h-screen overflow-hidden bg-background font-sans text-foreground md:flex">
-        <CardSearchPanel {...cardSearchPanelProps} />
+        <CardSearchPanel
+          {...cardSearchPanelProps}
+          headerActions={renderDeckActionButtons()}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {renderRaceHeader()}
 
-          <div className="flex-1 overflow-hidden p-5">
-            <div className="mx-auto flex h-full max-w-5xl flex-col gap-8">
+          <div className="flex-1 overflow-hidden p-4">
+            <div className="mx-auto flex h-full max-w-5xl flex-col gap-4">
               {renderSkillPanel()}
               <div className="min-h-0 flex-1">
                 {renderDeckGrid(3)}
@@ -450,7 +635,7 @@ export default function Home() {
 
           {mobileTab === "deck" ? (
             <div className="custom-scrollbar h-full overflow-y-auto">
-              {renderDeckGrid(2)}
+              {renderDeckGrid(2, renderDeckActionButtons())}
             </div>
           ) : null}
         </main>
