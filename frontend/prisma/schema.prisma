@@ -6,6 +6,27 @@ datasource db {
   provider = "postgresql"
 }
 
+// レース条件ごとのおすすめスキル(編集用)。
+// Gemini抽出CSVを取り込み、Prisma Studioでstatusやスキル名を修正し、
+// export-race-data で race_data.json に書き出す。
+model RaceSkill {
+  id         Int      @id @default(autoincrement())
+  event      String   @default("") // 例: 2026-07_CM。任意
+  race       String // 例: 東京 芝 2400m
+  strategy   String // 逃げ / 先行 / 差し / 追込
+  tier       String // super_recommended | recommended
+  skill      String
+  status     String   @default("draft") // draft | ready | rejected
+  sourceFile String   @default("")
+  memo       String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([race, strategy, tier, skill])
+  @@index([status])
+  @@index([race, strategy])
+}
+
 model Deck {
   id        String   @id @default(cuid())
   ownerId   String   @unique

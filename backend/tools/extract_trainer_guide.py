@@ -75,36 +75,49 @@ def default_output_path(race: str, strategy: str) -> Path:
     return DEFAULT_OUTPUT_DIR / f"{sanitize_file_part(race)}_{strategy_part}.csv"
 
 
-def make_prompt(race: str, strategy: str) -> str:
+def make_prompt(
+    race: str,
+    strategy: str,
+    image_count: int = 1,
+    continuation_tier: str | None = None,
+) -> str:
+    multi_note = ""
+    if image_count > 1:
+        multi_note = (
+            f"\n画像は{image_count}枚あります。撮影順(スクロール順)に並んでいて、"
+            "各画像の直前に「画像N:」というラベルを付けています。\n"
+            '各スキルがどの画像に写っていたかを "image" フィールド(1始まりの番号)で必ず示してください。\n'
+        )
+
     return f"""
 この画像はウマ娘 プリティーダービーのトレーナーガイドです。
 
 対象レース: {race}
 対象脚質: {strategy}
+{multi_note}
+画像に見えているものを、**上から順に**そのまま報告してください。
+セクションの判断はしなくてよいです。見えたものだけを報告します。
 
-画像内に表示されているスキル名だけを抽出してください。
+報告対象:
+- セクション見出し(「超おすすめスキル」「おすすめスキル」): kind を "heading" にする
+- スキル名のボタン: kind を "skill" にする(2列レイアウトは 左→右、上→下 の順)
 
-抽出対象:
-- 「超おすすめスキル」欄のスキル
-- 「おすすめスキル」欄のスキル
-
-抽出しないもの:
-- レース条件
-- 脚質タブ
-- ボタンや説明文
-- アイコン名
-- 画面外で見えていないスキル
+報告しないもの:
+- レース条件、脚質タブ、ボタン、説明文、アイコン名
+- 画面外で見えていないもの
 
 重要:
 - 画像に見えているスキル名は省略しないでください。
 - 「◎」「○」などの記号は画像の表記どおり残してください。
 - 金スキルかどうかの判断や除外はしないでください。
-- tier は必ず super_recommended または recommended のどちらかにしてください。
+- 見出しが画像に写っていない場合、headingは出力しないでください(推測しない)。
 
-返答はJSONのみで、次の形式にしてください。
+返答はJSONのみで、画像内の出現順に並べてください。
 [
-  {{"tier":"super_recommended","skill":"左回り◎"}},
-  {{"tier":"recommended","skill":"地固め"}}
+  {{"image":1,"kind":"heading","text":"超おすすめスキル"}},
+  {{"image":1,"kind":"skill","skill":"左回り◎"}},
+  {{"image":1,"kind":"heading","text":"おすすめスキル"}},
+  {{"image":1,"kind":"skill","skill":"地固め"}}
 ]
 """.strip()
 
@@ -162,36 +175,39 @@ def extract_quota_scope(body: str) -> str | None:
     return None
 
 
-def call_gemini_for_image(
-    image_path: Path,
+def call_gemini_for_images(
+    image_paths: list[Path],
     *,
     api_key: str,
     model: str,
     race: str,
     strategy: str,
+    continuation_tier: str | None = None,
 ) -> str:
-    mime_type = mimetypes.guess_type(image_path.name)[0] or "image/png"
-    image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
     model_name = urllib.parse.quote(model, safe="")
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model_name}:generateContent?key={urllib.parse.quote(api_key)}"
     )
+    parts: list[dict[str, Any]] = [
+        {
+            "text": make_prompt(
+                race,
+                strategy,
+                image_count=len(image_paths),
+                continuation_tier=continuation_tier,
+            )
+        }
+    ]
+    for index, image_path in enumerate(image_paths, start=1):
+        mime_type = mimetypes.guess_type(image_path.name)[0] or "image/png"
+        image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+        if len(image_paths) > 1:
+            parts.append({"text": f"画像{index}: {image_path.name}"})
+        parts.append({"inline_data": {"mime_type": mime_type, "data": image_data}})
+
     payload = {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {"text": make_prompt(race, strategy)},
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": image_data,
-                        }
-                    },
-                ],
-            }
-        ],
+        "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {
             "temperature": 0,
             "response_mime_type": "application/json",
@@ -226,8 +242,63 @@ def call_gemini_for_image(
     text_parts = [part.get("text", "") for part in parts if isinstance(part, dict)]
     text = "\n".join(part for part in text_parts if part).strip()
     if not text:
-        raise RuntimeError(f"Gemini returned no text for {image_path.name}.")
+        names = ", ".join(path.name for path in image_paths)
+        raise RuntimeError(f"Gemini returned no text for {names}.")
     return text
+
+
+DEFAULT_SKILL_MASTER = REPO_ROOT / "frontend" / "src" / "data" / "skill_master.json"
+# ラズパイ単体配置時のフォールバック(gametora_skills_watch.pyの出力先)
+FALLBACK_SKILL_MASTERS = (
+    Path("/home/katao/uma-guide-data/skill_master.json"),
+)
+
+
+def normalize_skill_for_match(value: str) -> str:
+    """照合用の正規化。半角記号を全角へ、空白を除去する。"""
+    table = str.maketrans({"!": "！", "?": "？", "(": "（", ")": "）", "~": "〜"})
+    return value.translate(table).replace(" ", "").replace("　", "")
+
+
+def load_skill_master(path: Path | None) -> dict[str, str]:
+    """正規化名 -> 正式名 の辞書を返す。無ければ空dict。"""
+    candidates = [path] if path else [DEFAULT_SKILL_MASTER, *FALLBACK_SKILL_MASTERS]
+    for master_path in candidates:
+        if not master_path.exists():
+            continue
+        try:
+            names = json.loads(master_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(names, list) and names:
+            return {normalize_skill_for_match(str(n)): str(n) for n in names}
+    return {}
+
+
+def correct_skill_name(skill: str, master: dict[str, str]) -> tuple[str, str]:
+    """マスター照合。(スキル名, memo) を返す。
+
+    - 完全一致 / 正規化一致: 正式名に置き換え
+    - 近似一致(85%以上): 正式名に置き換え、memoにauto_fix
+    - 不一致: そのまま、memoにunknown_skill
+    """
+    if not master:
+        return skill, ""
+
+    normalized = normalize_skill_for_match(skill)
+    canonical = master.get(normalized)
+    if canonical:
+        memo = "" if canonical == skill else f"auto_fix:{skill}->{canonical}"
+        return canonical, memo
+
+    import difflib
+
+    matches = difflib.get_close_matches(normalized, list(master.keys()), n=1, cutoff=0.85)
+    if matches:
+        canonical = master[matches[0]]
+        return canonical, f"auto_fix:{skill}->{canonical}"
+
+    return skill, "unknown_skill:要確認"
 
 
 def strip_code_fence(text: str) -> str:
@@ -269,15 +340,35 @@ def parse_json_rows(text: str) -> list[dict[str, str]]:
     if not isinstance(data, list):
         raise ValueError("Gemini response JSON must be an array or contain a skills array.")
 
-    rows: list[dict[str, str]] = []
+    items: list[dict[str, str]] = []
     for item in data:
         if not isinstance(item, dict):
             continue
-        tier = normalize_tier(str(item.get("tier") or item.get("category") or ""))
+
+        image_no = item.get("image")
+        image = ""
+        if isinstance(image_no, (int, float)) or (
+            isinstance(image_no, str) and str(image_no).isdigit()
+        ):
+            image = str(int(image_no))
+
+        kind = str(item.get("kind") or "").strip()
+        if kind == "heading":
+            tier = normalize_tier(str(item.get("text") or item.get("heading") or ""))
+            if tier:
+                items.append({"kind": "heading", "tier": tier, "image": image})
+            continue
+
         skill = clean_skill(str(item.get("skill") or item.get("skill_name") or ""))
-        if tier and skill:
-            rows.append({"tier": tier, "skill": skill})
-    return rows
+        if not skill:
+            continue
+        entry = {"kind": "skill", "skill": skill, "image": image}
+        # 旧形式(tier付き)との互換: 明示tierがあれば保持
+        explicit_tier = normalize_tier(str(item.get("tier") or item.get("category") or ""))
+        if explicit_tier:
+            entry["tier"] = explicit_tier
+        items.append(entry)
+    return items
 
 
 def parse_csv_rows(text: str) -> list[dict[str, str]]:
@@ -342,7 +433,7 @@ def processed_source_files(rows: list[dict[str, str]], race: str, strategy: str)
 
 
 def call_gemini_with_retries(
-    image_path: Path,
+    image_paths: list[Path],
     *,
     api_key: str,
     model: str,
@@ -350,15 +441,17 @@ def call_gemini_with_retries(
     strategy: str,
     max_retries: int,
     delay_seconds: float,
+    continuation_tier: str | None = None,
 ) -> str:
     for attempt in range(max_retries + 1):
         try:
-            return call_gemini_for_image(
-                image_path,
+            return call_gemini_for_images(
+                image_paths,
                 api_key=api_key,
                 model=model,
                 race=race,
                 strategy=strategy,
+                continuation_tier=continuation_tier,
             )
         except GeminiRateLimitError as error:
             if error.quota_scope == "day":
@@ -373,7 +466,8 @@ def call_gemini_with_retries(
             print(f"Rate limited. Waiting {wait_seconds:.0f}s before retry...")
             time.sleep(wait_seconds)
 
-    raise RuntimeError(f"Gemini retry loop failed for {image_path.name}.")
+    names = ", ".join(path.name for path in image_paths)
+    raise RuntimeError(f"Gemini retry loop failed for {names}.")
 
 
 def extract(args: argparse.Namespace) -> int:
@@ -407,43 +501,97 @@ def extract(args: argparse.Namespace) -> int:
     processed_sources = processed_source_files(rows, args.race, args.strategy) if args.append else set()
     request_count = 0
 
-    for image_path in images:
-        source_file = str(image_path.relative_to(input_dir))
-        if source_file in processed_sources and not args.force:
-            print(f"Skipping already processed image: {source_file}")
-            continue
+    skill_master = load_skill_master(args.skill_master)
+    if skill_master:
+        print(f"skill_master: {len(skill_master)} 件で照合します")
+    else:
+        print("skill_master が見つからないため、照合補正をスキップします")
+
+    pending = [
+        path
+        for path in images
+        if args.force or str(path.relative_to(input_dir)) not in processed_sources
+    ]
+    skipped = len(images) - len(pending)
+    if skipped:
+        print(f"Skipping {skipped} already processed image(s).")
+
+    # --force時: 再処理する画像の既存行を先に削除する(古いtier等が残らないように)
+    if args.force and rows:
+        pending_sources = {str(path.relative_to(input_dir)) for path in pending}
+        before = len(rows)
+        rows = [
+            row
+            for row in rows
+            if not (
+                row.get("race") == args.race
+                and row.get("strategy") == args.strategy
+                and row.get("source_file", "") in pending_sources
+            )
+        ]
+        removed = before - len(rows)
+        if removed:
+            print(f"Removed {removed} existing row(s) for reprocessed images.")
+
+    batch_size = max(1, args.batch_size)
+    continuation_tier: str | None = None
+    for start in range(0, len(pending), batch_size):
+        batch = pending[start : start + batch_size]
+        source_files = [str(path.relative_to(input_dir)) for path in batch]
 
         if request_count > 0 and args.delay_seconds > 0:
             print(f"Waiting {args.delay_seconds:.0f}s to avoid rate limits...")
             time.sleep(args.delay_seconds)
 
-        print(f"Extracting: {image_path.name}")
+        print(f"Extracting ({len(batch)} images): {', '.join(p.name for p in batch)}")
         response_text = call_gemini_with_retries(
-            image_path,
+            batch,
             api_key=api_key,
             model=args.model,
             race=args.race,
             strategy=args.strategy,
             max_retries=args.max_retries,
             delay_seconds=args.delay_seconds,
+            continuation_tier=continuation_tier,
         )
         request_count += 1
-        extracted_rows = parse_model_rows(response_text)
-        for row in extracted_rows:
+        extracted_items = parse_model_rows(response_text)
+
+        # tierの割り当てはコード側で決定する:
+        # 見出しが現れるまでは直前のセクション(バッチ跨ぎはcontinuation_tierで引き継ぐ)
+        current_tier = continuation_tier or "super_recommended"
+        for item in extracted_items:
+            if item.get("kind") == "heading":
+                current_tier = item["tier"]
+                continue
+
+            tier = item.get("tier") or current_tier
+            image_index = int(item.get("image") or "1") - 1
+            if 0 <= image_index < len(source_files):
+                source_file = source_files[image_index]
+                memo = ""
+            else:
+                source_file = source_files[0]
+                memo = "image_unattributed"
+
+            skill, fix_memo = correct_skill_name(item["skill"], skill_master)
+            memo = " ".join(part for part in (memo, fix_memo) if part)
+
             rows.append(
                 {
                     "race": args.race,
                     "strategy": args.strategy,
-                    "tier": row["tier"],
-                    "skill": row["skill"],
+                    "tier": tier,
+                    "skill": skill,
                     "source_file": source_file,
                     "status": args.status,
-                    "memo": "",
+                    "memo": memo,
                 }
             )
+        continuation_tier = current_tier
         rows = dedupe_rows(rows)
         write_rows(output_path, rows)
-        processed_sources.add(source_file)
+        processed_sources.update(source_files)
         print(f"Saved progress: {len(rows)} rows")
 
     rows = dedupe_rows(rows)
@@ -472,6 +620,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds to wait between Gemini requests. Use 13+ for the free tier.",
     )
     parser.add_argument("--max-retries", type=int, default=3, help="Retry count for Gemini 429 rate limits.")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=int(os.environ.get("GEMINI_BATCH_SIZE", "4")),
+        help="Images per Gemini request. Larger values reduce API calls.",
+    )
+    parser.add_argument(
+        "--skill-master",
+        type=Path,
+        help=f"skill_master.json path. Defaults to {DEFAULT_SKILL_MASTER}.",
+    )
     parser.add_argument("--force", action="store_true", help="Reprocess images even when --append finds them in the output CSV.")
     parser.add_argument("--dry-run", action="store_true", help="List images and output path without calling Gemini.")
     return parser

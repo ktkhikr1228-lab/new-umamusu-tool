@@ -18,7 +18,11 @@ import raceDataRaw from "../src/data/race_data.json";
 const STRATEGY_ORDER = ["逃げ", "先行", "差し", "追込"];
 const CONTACT_FORM_URL =
   "https://docs.google.com/forms/d/e/1FAIpQLSfGUiRhR6bkJ3V54ywE-D9R_s5LJKAlppjFP2qt4YWFaYucuA/viewform";
-const DECK_OWNER_ID_STORAGE_KEY = "uma-tool-deck-owner-id";
+const DECK_STORAGE_KEY = "uma-tool-deck-v1"; // 旧形式(単一編成)。移行用に参照のみ
+const DECKS_STORAGE_KEY = "uma-tool-decks-v1";
+const DECK_SLOT_COUNT = 3;
+
+type DeckStore = { active: number; slots: number[][] };
 const INITIAL_CARDS = cardsData as SupportCard[];
 const INITIAL_RACE_DATA = raceDataRaw as unknown as RaceData;
 const INITIAL_RACE = Object.keys(INITIAL_RACE_DATA)[0] || "";
@@ -39,57 +43,99 @@ const USAGE_MODE_OPTIONS: Array<{
   { value: "training", label: "本育成", shortLabel: "本番" },
 ];
 
-function getApiBaseUrl() {
-  const envUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
-  if (!envUrl) return "";
-
-  if (
-    typeof window !== "undefined" &&
-    !["localhost", "127.0.0.1"].includes(window.location.hostname) &&
-    envUrl.includes("localhost")
-  ) {
-    return "";
-  }
-
-  return envUrl;
+function idsToCards(ids: unknown, cards: SupportCard[]): SupportCard[] {
+  if (!Array.isArray(ids)) return [];
+  const cardById = new Map(cards.map((card) => [card.id, card]));
+  return ids
+    .map((id) => cardById.get(id as number))
+    .filter((card): card is SupportCard => Boolean(card))
+    .slice(0, 6);
 }
 
-function getDeckOwnerId() {
-  if (typeof window === "undefined") return "";
-
-  const existingId = window.localStorage.getItem(DECK_OWNER_ID_STORAGE_KEY);
-  if (existingId) return existingId;
-
-  const nextId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(DECK_OWNER_ID_STORAGE_KEY, nextId);
-  return nextId;
+function emptyDeckStore(): DeckStore {
+  return { active: 0, slots: Array.from({ length: DECK_SLOT_COUNT }, () => []) };
 }
 
-function normalizeCardsPayload(payload: unknown) {
-  if (Array.isArray(payload)) return payload as SupportCard[];
-  if (
-    payload &&
-    typeof payload === "object" &&
-    Array.isArray((payload as { cards?: unknown }).cards)
-  ) {
-    return (payload as { cards: SupportCard[] }).cards;
+function loadDeckStore(): DeckStore {
+  if (typeof window === "undefined") return emptyDeckStore();
+
+  try {
+    const raw = window.localStorage.getItem(DECKS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<DeckStore>;
+      const slots = Array.from({ length: DECK_SLOT_COUNT }, (_, index) => {
+        const slot = parsed.slots?.[index];
+        return Array.isArray(slot) ? (slot as number[]) : [];
+      });
+      const active =
+        typeof parsed.active === "number" &&
+        parsed.active >= 0 &&
+        parsed.active < DECK_SLOT_COUNT
+          ? parsed.active
+          : 0;
+      return { active, slots };
+    }
+
+    // 旧形式(単一編成)からの移行
+    const legacy = window.localStorage.getItem(DECK_STORAGE_KEY);
+    if (legacy) {
+      const ids = JSON.parse(legacy) as unknown;
+      const store = emptyDeckStore();
+      if (Array.isArray(ids)) store.slots[0] = ids as number[];
+      return store;
+    }
+  } catch {
+    // fall through
   }
-  return null;
+  return emptyDeckStore();
 }
 
 export default function Home() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [activeFilter, setActiveFilter] = useState("すべて");
-  const [cards, setCards] = useState<SupportCard[]>(INITIAL_CARDS);
+  const cards = INITIAL_CARDS;
+  const raceData = INITIAL_RACE_DATA;
   const [deck, setDeck] = useState<SupportCard[]>([]);
-  const [raceData, setRaceData] = useState<RaceData>(INITIAL_RACE_DATA);
   const [selectedRace, setSelectedRace] = useState(INITIAL_RACE);
   const [strategy, setStrategy] = useState("先行");
   const [usageMode, setUsageMode] = useState<UsageMode>("factor");
   const [mobileTab, setMobileTab] = useState<MobileTab>("search");
+  const [deckRestored, setDeckRestored] = useState(false);
+  const [saveFlash, setSaveFlash] = useState(false);
+  const [activeSlot, setActiveSlot] = useState(0);
+
+  // 初回マウント時にlocalStorageから編成を復元する
+  useEffect(() => {
+    const store = loadDeckStore();
+    setActiveSlot(store.active);
+    setDeck(idsToCards(store.slots[store.active], INITIAL_CARDS));
+    setDeckRestored(true);
+  }, []);
+
+  // 編成が変わるたびに自動保存する(復元前の空編成で上書きしない)
+  useEffect(() => {
+    if (!deckRestored) return;
+    const store = loadDeckStore();
+    store.active = activeSlot;
+    store.slots[activeSlot] = deck.map((card) => card.id);
+    window.localStorage.setItem(DECKS_STORAGE_KEY, JSON.stringify(store));
+    setSaveFlash(true);
+    const timer = window.setTimeout(() => setSaveFlash(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [deck, activeSlot, deckRestored]);
+
+  const switchDeckSlot = (slot: number) => {
+    if (slot === activeSlot) return;
+    const store = loadDeckStore();
+    setActiveSlot(slot);
+    setDeck(idsToCards(store.slots[slot], INITIAL_CARDS));
+  };
+
+  const handleSkillSearch = (skill: string) => {
+    setSearchKeyword(skill);
+    setActiveFilter("すべて");
+    setMobileTab("search");
+  };
 
   const raceOptions = useMemo(() => Object.keys(raceData), [raceData]);
 
@@ -110,71 +156,6 @@ export default function Home() {
   const effectiveStrategy = availableStrategies.has(strategy)
     ? strategy
     : strategyOptions[0] || "";
-
-  useEffect(() => {
-    async function initializeData() {
-      try {
-        const apiBaseUrl = getApiBaseUrl();
-        const [cardsResponse, raceResponse] = await Promise.all([
-          fetch(`${apiBaseUrl}/api/cards`),
-          fetch(`${apiBaseUrl}/api/race-data`),
-        ]);
-
-        if (cardsResponse.ok) {
-          const cardsPayload = normalizeCardsPayload(await cardsResponse.json());
-          if (cardsPayload) setCards(cardsPayload);
-        }
-
-        if (raceResponse.ok) {
-          const racePayload = (await raceResponse.json()) as RaceData;
-          setRaceData(racePayload);
-          setSelectedRace((currentRace) =>
-            currentRace && racePayload[currentRace]
-              ? currentRace
-              : Object.keys(racePayload)[0] || ""
-          );
-        }
-
-        const ownerId = getDeckOwnerId();
-        if (ownerId) {
-          const deckResponse = await fetch(
-            `/api/deck?ownerId=${encodeURIComponent(ownerId)}`
-          );
-          if (deckResponse.ok) {
-            const deckPayload = (await deckResponse.json()) as {
-              deck?: unknown;
-            };
-            if (Array.isArray(deckPayload.deck)) {
-              setDeck(deckPayload.deck as SupportCard[]);
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch bundled data API:", error);
-      }
-    }
-
-    initializeData();
-  }, []);
-
-  const handleSaveDeck = async () => {
-    try {
-      const ownerId = getDeckOwnerId();
-      if (!ownerId) throw new Error("Missing deck owner id.");
-
-      const response = await fetch("/api/deck", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerId, deck }),
-      });
-
-      if (!response.ok) throw new Error("Failed to save deck.");
-      alert("編成を保存しました。");
-    } catch (error) {
-      console.error("Failed to save deck:", error);
-      alert("編成の保存に失敗しました。DB設定を確認してください。");
-    }
-  };
 
   const currentStrategyDetail = useMemo(() => {
     if (!selectedRace || !raceData[selectedRace] || !effectiveStrategy) {
@@ -299,10 +280,18 @@ export default function Home() {
     missingSuperSkills,
     missingRecommendedSkills,
     onAddCard: addToDeck,
+    onSkillClick: handleSkillSearch,
   };
 
   const renderDeckActionButtons = (compact = false) => (
     <>
+      <span
+        className={`whitespace-nowrap text-[11px] transition-colors ${
+          saveFlash ? "font-semibold text-emerald-600" : "text-muted-foreground"
+        }`}
+      >
+        {saveFlash ? "保存しました ✓" : "自動保存"}
+      </span>
       <button
         onClick={() => setDeck([])}
         className={cn(
@@ -311,15 +300,6 @@ export default function Home() {
         )}
       >
         {compact ? "編成クリア" : "クリア"}
-      </button>
-      <button
-        onClick={handleSaveDeck}
-        className={cn(
-          "material-button-primary flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-bold transition",
-          compact ? "min-w-[92px] px-3 py-1.5" : "min-w-[64px] px-2.5 py-1.5"
-        )}
-      >
-        {compact ? "編成保存" : "保存"}
       </button>
     </>
   );
@@ -529,35 +509,52 @@ export default function Home() {
 
   const renderSkillPanel = () => (
     <section className="flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card px-4 py-3">
-      <SkillList strategyDetail={visibleStrategyDetail} deckSkills={deckSkills} />
+      <SkillList
+        strategyDetail={visibleStrategyDetail}
+        deckSkills={deckSkills}
+        onSkillClick={handleSkillSearch}
+      />
     </section>
   );
 
+  const renderDeckSlotTabs = () => (
+    <div className="flex items-center gap-1" role="tablist" aria-label="編成スロット">
+      {Array.from({ length: DECK_SLOT_COUNT }).map((_, slot) => (
+        <button
+          key={slot}
+          type="button"
+          role="tab"
+          aria-selected={slot === activeSlot}
+          onClick={() => switchDeckSlot(slot)}
+          title={`編成${slot + 1}に切り替え`}
+          className={cn(
+            "rounded-md px-2.5 py-1 text-xs font-semibold transition",
+            slot === activeSlot
+              ? "material-button-primary"
+              : "bg-secondary text-secondary-foreground hover:bg-muted"
+          )}
+        >
+          {slot + 1}
+        </button>
+      ))}
+    </div>
+  );
+
   const renderDeckGrid = (columns: 2 | 3, headerActions?: ReactNode) => (
-    <section className="min-h-0 rounded-lg border border-border bg-card p-4">
+    <section className="min-h-0 rounded-lg border border-border bg-card p-4 pb-6">
       <div className="mb-3 flex items-center justify-between gap-3">
-        {headerActions ? (
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-card-foreground">
-              現在の編成
-            </h2>
-            <span className="text-xs font-semibold text-card-foreground">
-              {deck.length}/6枚
-            </span>
-          </div>
-        ) : (
-          <>
-            <h2 className="text-sm font-semibold text-card-foreground">
-              現在の編成
-            </h2>
-            <span className="text-xs font-semibold text-card-foreground">
-              {deck.length}/6枚
-            </span>
-          </>
-        )}
-        {headerActions ? (
-          <div className="flex shrink-0 items-center gap-2">{headerActions}</div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-card-foreground">
+            編成
+          </h2>
+          <span className="text-xs font-semibold text-card-foreground">
+            {deck.length}/6枚
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {renderDeckSlotTabs()}
+          {headerActions}
+        </div>
       </div>
       <div className={columns === 2 ? "grid grid-cols-2 gap-3" : "grid grid-cols-3 gap-3"}>
         {Array.from({ length: 6 }).map((_, index) => (
@@ -605,8 +602,8 @@ export default function Home() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {renderRaceHeader()}
 
-          <div className="flex-1 overflow-hidden p-4">
-            <div className="mx-auto flex h-full max-w-5xl flex-col gap-4">
+          <div className="flex-1 overflow-hidden px-4 pb-4 pt-3">
+            <div className="mx-auto flex h-full max-w-5xl flex-col gap-3">
               {renderSkillPanel()}
               <div className="min-h-0 flex-1">
                 {renderDeckGrid(3, renderDeckActionButtons(true))}

@@ -123,9 +123,9 @@ def resolve_input_paths(args: argparse.Namespace) -> list[Path]:
     if args.input:
         paths.extend(path.resolve() for path in args.input)
     if args.input_glob:
-        paths.extend(Path(path).resolve() for path in glob.glob(args.input_glob))
+        paths.extend(Path(path).resolve() for path in glob.glob(args.input_glob, recursive=True))
     if not paths:
-        paths.extend(Path(path).resolve() for path in glob.glob(str(DEFAULT_EXTRACTED_GLOB)))
+        paths.extend(Path(path).resolve() for path in glob.glob(str(DEFAULT_EXTRACTED_GLOB), recursive=True))
 
     unique_paths = sorted(dict.fromkeys(paths))
     missing = [path for path in unique_paths if not path.exists()]
@@ -268,7 +268,13 @@ def resolve_tier_conflicts(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     return result
 
 
-def fixed_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+def fixed_rows(
+    rows: list[dict[str, str]],
+    *,
+    known: set[str],
+    non_factor: set[str],
+    drop_review_unknown: bool,
+) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     seen: set[tuple[str, str, str, str]] = set()
     for row in rows:
@@ -280,6 +286,8 @@ def fixed_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
                 new_row.get("memo", ""),
                 f"auto_fix:{old_skill}->{new_row['skill']}",
             )
+        if drop_review_unknown and classify_skill(new_row["skill"], known, non_factor) == "review_unknown":
+            continue
         key = (
             new_row.get("race", ""),
             new_row.get("strategy", ""),
@@ -352,7 +360,16 @@ def run(args: argparse.Namespace) -> int:
         print(f"Wrote report: {args.report}")
 
     if args.write_fixed:
-        write_csv(args.write_fixed, CSV_COLUMNS, fixed_rows(rows))
+        write_csv(
+            args.write_fixed,
+            CSV_COLUMNS,
+            fixed_rows(
+                rows,
+                known=known,
+                non_factor=non_factor,
+                drop_review_unknown=args.drop_review_unknown,
+            ),
+        )
         print(f"Wrote fixed CSV: {args.write_fixed}")
 
     return 1 if args.fail_on_review and any(row["result"] == "review_unknown" for row in report_rows) else 0
@@ -366,6 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-glob", help="Glob for extracted CSV files.")
     parser.add_argument("--report", type=Path, help=f"Output report CSV path. Example: {DEFAULT_REPORT}")
     parser.add_argument("--write-fixed", type=Path, help="Write a copy with common OCR fixes applied.")
+    parser.add_argument("--drop-review-unknown", action="store_true", help="Drop unknown skills from --write-fixed output.")
     parser.add_argument("--fail-on-review", action="store_true", help="Exit with 1 when unknown skills remain.")
     return parser
 

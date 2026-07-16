@@ -2,7 +2,7 @@
 
 ウマ娘の因子周回向けに、レース条件ごとの有効スキルを見ながらサポートカード編成を組むためのWebツールです。
 
-最終更新: 2026-07-02
+最終更新: 2026-07-04
 
 ## 現在の状態
 
@@ -94,26 +94,23 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ## 編成保存
 
-編成保存はNext.jsの `/api/deck` で扱います。ブラウザに匿名IDを作り、そのIDごとに1つの編成を保存します。
+編成はブラウザのlocalStorageに自動保存します(3スロット、切り替え式)。サーバもDBも使わないため、サイト全体が完全静的です。
 
-保存を有効にするにはPostgreSQLの接続文字列を `DATABASE_URL` に設定します。
+- 保存先キー: `uma-tool-decks-v1`(カードIDの配列×3スロット)
+- 旧形式 `uma-tool-deck-v1` は初回アクセス時に編成1へ自動移行
+- 保存はそのブラウザ限定。別端末との共有はできない(必要になったら再検討)
 
-```powershell
-cd C:\tmp\new-umamusu-tool\frontend
-$env:DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
-npm run prisma:migrate -- --name init
-npm run dev
-```
+## ホスティング / デプロイ
 
-本番DBに既存マイグレーションを適用する場合:
+`frontend` は `output: "export"` の静的エクスポート構成です。`npm run build` で `out/` に静的サイトが生成され、Cloudflare Pages / Vercel / GitHub Pages などにそのまま置けます。
 
-```powershell
-cd C:\tmp\new-umamusu-tool\frontend
-$env:DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
-npm run prisma:deploy
-```
+Cloudflare Pagesの場合:
 
-Vercel本番で保存を使う場合も、同じ `DATABASE_URL` を環境変数に追加します。`DATABASE_URL` が未設定でもカード検索やレース条件表示は動きますが、保存ボタンは失敗します。
+1. Pagesでこのリポジトリを接続
+2. ルートディレクトリ: `frontend`、ビルドコマンド: `npm run build`、出力: `out`
+3. デプロイ後、カスタムドメインを割り当て(任意)
+
+以降はmainへのpushごとに自動デプロイされます。
 
 ## データ更新
 
@@ -136,7 +133,28 @@ Vercel本番で保存を使う場合も、同じ `DATABASE_URL` を環境変数�
 
 ゲーム内トレーナーガイドのスクショから、レース条件ごとのスキルCSVを作ります。
 
-基本の流れ:
+基本の流れ(推奨: DB経由):
+
+```text
+スクショ(ホットキーで撮影・転送 → tools/screenshot/ 参照)
+  -> Gemini APIで抽出(複数画像/1リクエスト + skill_master自動補正)
+  -> npm run skills:import でRaceSkillテーブルへ
+  -> Prisma Studioで要確認行(unknown_skill)を中心に確認
+  -> npm run skills:export -> frontend/src/data/race_data.json
+```
+
+### スクショの撮影・転送(半自動)
+
+`tools/screenshot/` のAutoHotkeyスクリプトを常駐させ、ガイド画面で Ctrl+Alt+1〜4(脚質)を押すと、キャプチャ→ローカル保存→ラズパイinboxへの転送まで自動で行われます。ゲームへの入力は自動化しません。詳細は `tools/screenshot/README.md`。
+
+### 抽出の改善点
+
+`extract_trainer_guide.py` は以下に対応しています:
+
+- `--batch-size`(既定4): 複数画像を1回のGemini呼び出しにまとめ、API消費を削減
+- skill_master照合: 表記ゆれ(半角!等)や軽微な誤字を自動修正し `auto_fix` をmemoに記録。マスターに無い名前は `unknown_skill:要確認` を付与
+
+### 旧フロー(CSV手動チェック)
 
 ```text
 スクショ画像
@@ -179,6 +197,9 @@ python backend\tools\build_race_data.py `
 - 古いスクショの整理
 - Discordへの通知
 - 公式ニュース監視とイベントフォルダ作成の補助
+- GameToraスキルデータの更新監視(gametora_skills_watch.py、15分おきcron)。
+  更新検知でskill_master.jsonを再生成し、追加/削除スキルをDiscord通知
+- スキル修正管理用PostgreSQL(RaceSkillテーブル)のホスト
 
 接続:
 
@@ -225,17 +246,82 @@ Raspberry Pi extracted CSV
 
 この流れは試験運用中です。プレビュー用JSONは確認目的で、本番データとは分けて扱います。
 
-## Prismaの今後の使い道
+## Prismaによるスキル修正管理
 
-現在のPrismaは主に編成保存用です。今後は次の用途に広げる可能性があります。
+抽出済みスキルはPrismaの `RaceSkill` テーブルで管理できます。DBは編集専用で、公開データは従来どおり `race_data.json` の静的JSONです(DBが落ちてもサイトは動く)。
 
-- 抽出済みスキルの確認状態管理
-- 誤認識スキルの修正辞書
-- 超おすすめ / おすすめの手動修正
-- レース条件ごとのスキル履歴管理
-- 管理画面からのデータ修正
+```text
+Gemini抽出CSV
+  -> npm run skills:import  (RaceSkillテーブルへ取り込み)
+  -> レビューページで画像と見比べて修正(下記)
+  -> 一括ready化 -> npm run skills:export -- --merge (race_data.jsonへ)
+  -> コミット -> 自動デプロイ
+```
 
-毎月のレース更新をスムーズにするには、`race_data.json` を直接編集するより、Prisma上で確認・修正してからJSONへエクスポートする流れが有力です。
+### レビューページでの確認・修正(推奨)
+
+スクショと抽出結果を横並びで見比べ、その場で修正してDBへ適用できます。
+
+```powershell
+# 1. レビューページ生成(リポジトリルートで)
+python backend\tools\build_review_page.py `
+  --csv "backend\data\guide_import\extracted_pi_preview\中山_芝_3600m_1_nige.csv" `
+  --images-dir "$env:USERPROFILE\uma-shots\2026-07_CM\1_nige" `
+  --output review_nige.html
+
+# 2. 適用サーバを起動(frontendで、DATABASE_URL設定済みで)
+node scripts/review-server.mjs
+```
+
+review_nige.htmlをブラウザで開き、赤帯(unknown_skill)を画像と見比べて名前修正 or「除外」チェック →「DBに適用」ボタン。修正先が既に存在する場合はサーバが自動で除外(rejected)に切り替えるので、重複エラーは起きません。
+
+確認が済んだら一括ready化:
+
+```powershell
+node scripts/db-query.mjs 'update RaceSkill set status = ''ready'' where race = ''中山 芝 3600m'' and status = ''draft'''
+```
+
+### db-query(任意SQLの実行)
+
+```powershell
+node scripts/db-query.mjs 'select count(*) from RaceSkill'
+node scripts/db-query.mjs --file fixes.sql
+```
+
+Prisma Studio(`npm run prisma:studio`)は閲覧・フィルタ用として使えますが、v7ではセル編集時にエラー理由が表示されないことがあるため、修正はレビューページかdb-query経由を推奨します。
+
+### 編集用DB(ラズパイのPostgreSQL)
+
+uma-piにPostgreSQLを立てて、PCからTailscale経由で接続します。
+
+ラズパイ側(初回のみ):
+
+```bash
+sudo apt install postgresql
+sudo -u postgres psql -c "CREATE USER uma WITH PASSWORD 'パスワード';"
+sudo -u postgres psql -c "CREATE DATABASE uma_tool OWNER uma;"
+# /etc/postgresql/*/main/postgresql.conf: listen_addresses = '*'
+# /etc/postgresql/*/main/pg_hba.conf: Tailscale CGNAT帯を追加
+#   host all uma 100.64.0.0/10 scram-sha-256
+sudo systemctl restart postgresql
+```
+
+PC側(frontendディレクトリで):
+
+```powershell
+$env:DATABASE_URL="postgresql://uma:パスワード@uma-pi:5432/uma_tool"
+npm run prisma:migrate -- --name add_race_skill   # 初回のみ
+npm run skills:import -- --event 2026-07_CM ../backend/data/guide_import/extracted
+npm run prisma:studio                             # ブラウザで確認・修正
+npm run skills:export
+```
+
+### 運用メモ
+
+- `skills:import` は既存行(同じ race / strategy / tier / skill)をスキップするので、Studioでの手修正は再取り込みで消えない
+- `skills:export` は既定で `status = ready` の行のみを書き出し、JSONを丸ごと作り直す。`--include-draft` でdraftも含む、`--merge` で既存JSONへ追記、`--dry-run` で件数確認のみ
+- statusの値: `draft`(未確認) / `ready`(公開OK) / `rejected`(誤認識など除外)
+- 編成保存と同じDBを使う場合は、Vercel側の `DATABASE_URL` と分けて考える(編集用DBはラズパイ、公開用はJSONなのでVercelからDB参照は不要)
 
 ## 変更しやすくするためのメモ
 
@@ -255,15 +341,25 @@ Raspberry Pi extracted CSV
 | トレーナーガイド抽出 | `backend/tools/extract_trainer_guide.py` |
 | 抽出スキルの確認 | `backend/tools/check_extracted_skills.py` |
 | レースデータ生成 | `backend/tools/build_race_data.py` |
+| スキルDB取り込み/書き出し | `frontend/scripts/import-race-skills.mjs` / `export-race-data.mjs` |
+| レビューページ生成 | `backend/tools/build_review_page.py` |
+| レビュー適用サーバ | `frontend/scripts/review-server.mjs` |
+| DBへの任意SQL実行 | `frontend/scripts/db-query.mjs` |
+| スクショ半自動化 | `tools/screenshot/` |
+| スキルマスター生成/照合 | `backend/tools/build_skill_master.py` |
+| GameTora更新監視(ラズパイ) | `backend/tools/gametora_skills_watch.py` |
 | Pi同期 | `backend/tools/sync_pi_guide_data.py` |
 
 ## 今後やりたいこと
 
 - スマホ表示の調整
-- レース条件と脚質データの拡充
-- 超おすすめ / おすすめを画像段階で分けて抽出する
-- Gemini抽出結果をPrismaで確認・修正できるようにする
-- 公式ニュースから次回イベント候補を検知して通知する
+- レース条件と脚質データの拡充(中山 芝 3600m 対応中)
+- 東京 芝 2400m 旧データのtier重複の整理(再抽出 or 手修正)
+- Cloudflare Pagesへの移行(静的化は完了、接続待ち)
+- 独自ドメインの取得と広告掲載の検討(収益はサーバ代の足し程度)
 - ラズパイGUIで画像管理をしやすくする
 - 更新完了通知や利用状況通知をDiscordへ送る
 - お問い合わせ内容をもとにUI/UXを改善
+
+済み(2026-07-04): 超/おすすめの見出しベース抽出、Prisma(レビューページ)での確認・修正、
+スクショのホットキー半自動化、GameToraスキル更新監視、サイト完全静的化、編成3スロット化
