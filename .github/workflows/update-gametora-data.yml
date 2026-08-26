@@ -3,7 +3,7 @@ name: Update GameTora data
 on:
   workflow_dispatch:
   schedule:
-    # 21:00 JST. The workflow only opens a PR when cards.json changes.
+    # 21:00 JST. The workflow only opens a PR when generated data changes.
     - cron: "0 12 * * *"
 
 permissions:
@@ -33,12 +33,15 @@ jobs:
       - name: Validate generated JSON
         run: |
           python -m json.tool frontend/src/data/cards.json > /dev/null
+          python -m json.tool frontend/src/data/factor_skill_aliases.json > /dev/null
 
       - name: Check whether data changed
         id: changes
         shell: bash
         run: |
-          if git diff --quiet -- frontend/src/data/cards.json; then
+          if git diff --quiet -- \
+            frontend/src/data/cards.json \
+            frontend/src/data/factor_skill_aliases.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -71,11 +74,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH_NAME"
-          git add frontend/src/data/cards.json
+          git add \
+            frontend/src/data/cards.json \
+            frontend/src/data/factor_skill_aliases.json
           git commit -m "Update GameTora support card data"
           git push origin "$BRANCH_NAME"
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "Update GameTora support card data" \
-            --body "Updated frontend/src/data/cards.json from GameTora support-cards, skills, ssr-events, and sr-events."
+            --body "Updated support-card data and factor-skill aliases from GameTora support-cards, skills, ssr-events, and sr-events."

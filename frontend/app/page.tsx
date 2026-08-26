@@ -167,19 +167,22 @@ export default function Home() {
     return detail;
   }, [effectiveStrategy, raceData, selectedRace]);
 
-  const visibleStrategyDetail = useMemo(
-    () => ({
-      super_recommended: filterSkillsForUsageMode(
-        currentStrategyDetail.super_recommended,
-        usageMode
-      ),
-      recommended: filterSkillsForUsageMode(
-        currentStrategyDetail.recommended,
-        usageMode
-      ),
-    }),
-    [currentStrategyDetail, usageMode]
-  );
+  const visibleStrategyDetail = useMemo(() => {
+    const superRecommended = filterSkillsForUsageMode(
+      currentStrategyDetail.super_recommended,
+      usageMode
+    );
+    const superRecommendedSet = new Set(superRecommended);
+    const recommended = filterSkillsForUsageMode(
+      currentStrategyDetail.recommended,
+      usageMode
+    ).filter((skill) => !superRecommendedSet.has(skill));
+
+    return {
+      super_recommended: superRecommended,
+      recommended,
+    };
+  }, [currentStrategyDetail, usageMode]);
 
   const allTargetSkills = useMemo(
     () => [
