@@ -14,6 +14,9 @@ param(
     [ValidateSet("nige", "senkou", "sashi", "oikomi")]
     [string]$Strategy,
 
+    [ValidateSet("super", "recommended")]
+    [string]$Tier = "super",
+
     [string]$Event = "",
 
     [string]$WindowTitle = "UmamusumePrettyDerby_Jpn",
@@ -32,6 +35,11 @@ $strategyDirs = @{
     senkou = "2_senkou"
     sashi  = "3_sashi"
     oikomi = "4_oikomi"
+}
+
+$tierDirs = @{
+    super       = "super"
+    recommended = "recommended"
 }
 
 # Resolve event name
@@ -89,7 +97,8 @@ $graphics.Dispose()
 
 # Save locally
 $strategyDir = $strategyDirs[$Strategy]
-$localDir = Join-Path $env:USERPROFILE "uma-shots\$Event\$strategyDir"
+$tierDir = $tierDirs[$Tier]
+$localDir = Join-Path $env:USERPROFILE "uma-shots\$Event\$strategyDir\$tierDir"
 New-Item -ItemType Directory -Force -Path $localDir | Out-Null
 $fileName = "{0:yyyyMMdd_HHmmss_fff}.png" -f (Get-Date)
 $localPath = Join-Path $localDir $fileName
@@ -102,7 +111,7 @@ Write-Host "Saved: $localPath"
 
 # Upload to the Pi
 if (-not $NoUpload) {
-    $remoteDir = "$PiInbox/$Event/$strategyDir"
+    $remoteDir = "$PiInbox/$Event/$strategyDir/$tierDir"
     ssh -o BatchMode=yes $PiTarget "mkdir -p '$remoteDir'" 2>$null
     scp -q -o BatchMode=yes $localPath "${PiTarget}:$remoteDir/" 2>$null
     if ($LASTEXITCODE -eq 0) {

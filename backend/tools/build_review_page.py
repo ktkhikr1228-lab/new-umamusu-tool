@@ -74,7 +74,8 @@ def main() -> int:
                 f'data-race="{html.escape(row.get("race", ""), quote=True)}" '
                 f'data-strategy="{html.escape(row.get("strategy", ""), quote=True)}" '
                 f'data-tier="{html.escape(row.get("tier", ""), quote=True)}" '
-                f'data-skill="{html.escape(skill, quote=True)}"'
+                f'data-skill="{html.escape(skill, quote=True)}" '
+                f'data-source-file="{html.escape(row.get("source_file", ""), quote=True)}"'
             )
             rows_html.append(
                 f'<tr class="{cls}" {attrs}><td class="tier">{tier_label}</td>'
@@ -139,17 +140,50 @@ def main() -> int:
 <div class="summary">
   全{len(rows)}行 / <span class="u">要確認 {unknown_total}件(赤)</span> /
   <span class="f">自動修正 {fixed_total}件(黄)</span><br>
-  赤帯は画像と見比べて Prisma Studio で修正または status=rejected に。黄帯は修正が正しいか確認。
+  赤帯は画像と見比べて修正してください。CSV保存で修正内容を次のJSON反映に渡せます。
 </div>
 {''.join(sections)}
 <div id="sqlbar">
+  <button onclick="downloadCsv()" class="sub">修正済みCSVを保存</button>
   <button onclick="applyToDb()" id="applybtn">DBに適用</button>
   <button onclick="generateSql()" class="sub">SQLを表示</button>
-  <span id="sqlinfo">名前を書き換えるか「除外」にチェック。「DBに適用」には review-server の起動が必要</span>
+  <span id="sqlinfo">名前を修正・除外してから「修正済みCSVを保存」を押してください。DBに適用は旧機能です。</span>
   <textarea id="sqlout" readonly onclick="this.select()"></textarea>
 </div>
 <script>
 function esc(v) {{ return v.replaceAll("'", "''"); }}
+function csvCell(v) {{
+  return '"' + String(v ?? '').replaceAll('"', '""') + '"';
+}}
+
+function downloadCsv() {{
+  const header = ['race', 'strategy', 'tier', 'skill', 'source_file', 'status', 'memo'];
+  const lines = [header.map(csvCell).join(',')];
+  document.querySelectorAll('tbody tr').forEach((tr) => {{
+    const d = tr.dataset;
+    const input = tr.querySelector('input.name');
+    const rejected = tr.querySelector('input.reject').checked;
+    const skill = input.value.trim();
+    const changed = skill !== d.skill;
+    const needsReview = tr.classList.contains('unknown') || tr.classList.contains('fixed');
+    const status = rejected ? 'rejected' : (needsReview && !changed ? 'draft' : 'ready');
+    let memo = rejected ? 'manual_reject' : '';
+    if (changed) memo = `manual_fix:${{d.skill}}->${{skill}}`;
+    lines.push([
+      d.race, d.strategy, d.tier, skill, d.sourceFile, status, memo,
+    ].map(csvCell).join(','));
+  }});
+
+  const blob = new Blob(["\\uFEFF" + lines.join('\\r\\n')], {{type: 'text/csv;charset=utf-8'}});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '{html.escape(args.csv.stem)}_reviewed.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+  document.getElementById('sqlinfo').textContent = '修正済みCSVを保存しました。Codexへ渡してJSONへ反映できます。';
+}}
+
 document.addEventListener("input", (e) => {{
   const tr = e.target.closest("tr");
   if (!tr) return;

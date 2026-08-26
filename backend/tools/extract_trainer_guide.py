@@ -64,6 +64,19 @@ def list_images(input_dir: Path) -> list[Path]:
     )
 
 
+def tier_from_path(path: Path, input_dir: Path) -> str | None:
+    """Return an explicitly selected tier from the screenshot subfolder."""
+    try:
+        parts = {part.casefold() for part in path.relative_to(input_dir).parts[:-1]}
+    except ValueError:
+        parts = {part.casefold() for part in path.parts[:-1]}
+    if "super" in parts or "超おすすめ" in parts:
+        return "super_recommended"
+    if "recommended" in parts or "おすすめ" in parts:
+        return "recommended"
+    return None
+
+
 def sanitize_file_part(value: str) -> str:
     value = re.sub(r"[\\/:*?\"<>|]+", "_", value.strip())
     value = re.sub(r"\s+", "_", value)
@@ -535,9 +548,24 @@ def extract(args: argparse.Namespace) -> int:
 
     batch_size = max(1, args.batch_size)
     continuation_tier: str | None = None
+    batches: list[list[Path]] = []
     for start in range(0, len(pending), batch_size):
-        batch = pending[start : start + batch_size]
+        candidate = pending[start : start + batch_size]
+        # 明示区分フォルダをまたぐバッチを作らない。これが旧方式の混在原因を防ぐ。
+        candidate_tiers = {tier_from_path(path, input_dir) for path in candidate}
+        if len(candidate_tiers) == 2:
+            split_at = next(
+                index for index in range(1, len(candidate))
+                if tier_from_path(candidate[index], input_dir) != tier_from_path(candidate[index - 1], input_dir)
+            )
+            batches.extend((candidate[:split_at], candidate[split_at:]))
+        else:
+            batches.append(candidate)
+
+    for batch in batches:
         source_files = [str(path.relative_to(input_dir)) for path in batch]
+        batch_tiers = {tier_from_path(path, input_dir) for path in batch}
+        explicit_batch_tier = next(iter(batch_tiers)) if len(batch_tiers) == 1 else None
 
         if request_count > 0 and args.delay_seconds > 0:
             print(f"Waiting {args.delay_seconds:.0f}s to avoid rate limits...")
@@ -552,20 +580,21 @@ def extract(args: argparse.Namespace) -> int:
             strategy=args.strategy,
             max_retries=args.max_retries,
             delay_seconds=args.delay_seconds,
-            continuation_tier=continuation_tier,
+            continuation_tier=explicit_batch_tier or continuation_tier,
         )
         request_count += 1
         extracted_items = parse_model_rows(response_text)
 
         # tierの割り当てはコード側で決定する:
         # 見出しが現れるまでは直前のセクション(バッチ跨ぎはcontinuation_tierで引き継ぐ)
-        current_tier = continuation_tier or "super_recommended"
+        current_tier = explicit_batch_tier or continuation_tier or "super_recommended"
         for item in extracted_items:
             if item.get("kind") == "heading":
                 current_tier = item["tier"]
                 continue
 
-            tier = item.get("tier") or current_tier
+            # フォルダ指定を最優先。モデルの見出し誤認識で区分が変わらないようにする。
+            tier = explicit_batch_tier or item.get("tier") or current_tier
             image_index = int(item.get("image") or "1") - 1
             if 0 <= image_index < len(source_files):
                 source_file = source_files[image_index]
@@ -588,7 +617,7 @@ def extract(args: argparse.Namespace) -> int:
                     "memo": memo,
                 }
             )
-        continuation_tier = current_tier
+        continuation_tier = None if explicit_batch_tier else current_tier
         rows = dedupe_rows(rows)
         write_rows(output_path, rows)
         processed_sources.update(source_files)

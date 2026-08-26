@@ -3,9 +3,10 @@
 ; 使い方:
 ;   1. AutoHotkey v2 をインストール (https://www.autohotkey.com/)
 ;   2. このファイルをダブルクリックで常駐開始(開始時は「逃げ」モード)
-;   3. 撮影は F8 だけ。脚質を切り替えるときだけ Ctrl+Alt+1〜4 を押す:
+;   3. 撮影は F8 だけ。脚質と区分を切り替えるときだけ以下を押す:
 ;        Ctrl+Alt+1 = 逃げ    Ctrl+Alt+2 = 先行
 ;        Ctrl+Alt+3 = 差し    Ctrl+Alt+4 = 追込
+;        Ctrl+Alt+5 = 超おすすめ    Ctrl+Alt+6 = おすすめ
 ;   4. ゲーム内でタブを切り替えたら同じ脚質に合わせ、
 ;      スクロールしながら F8 を押していく
 ;
@@ -18,11 +19,13 @@
 
 ScriptDir := A_ScriptDir
 CurrentStrategy := "nige"
+CurrentTier := "super"
 StrategyLabels := Map("nige", "逃げ", "senkou", "先行", "sashi", "差し", "oikomi", "追込")
+TierLabels := Map("super", "超おすすめ", "recommended", "おすすめ")
 
 ShowStrategy() {
-    global CurrentStrategy, StrategyLabels
-    ToolTip("脚質: " . StrategyLabels[CurrentStrategy] . " (F8で撮影)", A_ScreenWidth - 260, 8, 1)
+    global CurrentStrategy, CurrentTier, StrategyLabels, TierLabels
+    ToolTip("脚質: " . StrategyLabels[CurrentStrategy] . " / " . TierLabels[CurrentTier] . " (F8で撮影)", A_ScreenWidth - 360, 8, 1)
 }
 
 SetStrategy(strategy) {
@@ -33,9 +36,16 @@ SetStrategy(strategy) {
 }
 
 Capture() {
-    global CurrentStrategy, ScriptDir
+    global CurrentStrategy, CurrentTier, ScriptDir
     ps1 := ScriptDir . "\capture_upload.ps1"
-    Run('powershell -NoProfile -ExecutionPolicy Bypass -File "' . ps1 . '" -Strategy ' . CurrentStrategy, , "Hide")
+    Run('powershell -NoProfile -ExecutionPolicy Bypass -File "' . ps1 . '" -Strategy ' . CurrentStrategy . ' -Tier ' . CurrentTier, , "Hide")
+}
+
+SetTier(tier) {
+    global CurrentTier
+    CurrentTier := tier
+    ShowStrategy()
+    SoundBeep(900, 80)
 }
 
 ; 撮影(ワンキー)
@@ -46,6 +56,8 @@ F8::Capture()
 ^!2::SetStrategy("senkou")
 ^!3::SetStrategy("sashi")
 ^!4::SetStrategy("oikomi")
+^!5::SetTier("super")
+^!6::SetTier("recommended")
 
 ; Ctrl+Alt+0 : 常駐終了
 ^!0::ExitApp()
