@@ -1,8 +1,11 @@
 import nonFactorSkills from "../data/non_factor_skills.json";
+import factorSkillAliases from "../data/factor_skill_aliases.json";
 import { SupportCard, UsageMode } from "./types";
 
 const NON_FACTOR_SKILLS = new Set(nonFactorSkills as string[]);
+const FACTOR_SKILL_ALIASES = factorSkillAliases as Record<string, string>;
 const DOUBLE_CIRCLE = "\u25ce";
+const SINGLE_CIRCLE = "\u25cb";
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -16,12 +19,19 @@ export function isFactorSkill(skill: string) {
   return !skill.includes(DOUBLE_CIRCLE) && !NON_FACTOR_SKILLS.has(skill);
 }
 
+export function normalizeFactorSkill(skill: string) {
+  const lowerSkill = FACTOR_SKILL_ALIASES[skill] || skill;
+  return lowerSkill.replaceAll(DOUBLE_CIRCLE, SINGLE_CIRCLE);
+}
+
 export function filterSkillsForUsageMode(
   skills: string[],
   usageMode: UsageMode
 ) {
   const unique = uniqueSkills(skills);
-  return usageMode === "factor" ? unique.filter(isFactorSkill) : unique;
+  return usageMode === "factor"
+    ? uniqueSkills(unique.map(normalizeFactorSkill).filter(isFactorSkill))
+    : unique;
 }
 
 export function getCardSkills(

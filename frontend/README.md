@@ -69,14 +69,17 @@ Cloudflare Pagesの場合: ビルドコマンド `npm run build`、出力ディ�
 | サポカデータ | `src/data/cards.json` |
 | レース条件データ | `src/data/race_data.json` |
 | 因子周回除外スキル | `src/data/non_factor_skills.json` |
+| 金スキルから下位スキルへの対応 | `src/data/factor_skill_aliases.json` |
 | 全スキルマスター | `src/data/skill_master.json` |
 
 ## モード差分
 
 因子周回モード:
 
-- `◎` スキルを表示と計算から除外
-- 通常スキル以外を表示と計算から除外
+- `◎` スキルを対応する `○` スキルとして表示・計算
+- 金スキルを対応する下位の白スキルとして表示・計算
+- 因子にできないスキルだけを表示と計算から除外
+- 同じスキル系統が両方の段階にある場合は「超おすすめ」を優先
 
 本育成モード:
 

@@ -220,6 +220,59 @@ def make_skill_map(skills_data: Any) -> dict[str, str]:
     return skill_map
 
 
+def make_factor_skill_aliases(skills_data: Any) -> dict[str, str]:
+    records = as_records(skills_data)
+    skills_by_id = {
+        str(skill_id): skill
+        for skill in records
+        if (skill_id := pick(skill, ("id", "skill_id", "skillId"))) not in (None, "")
+    }
+    aliases: dict[str, str] = {}
+
+    for skill in records:
+        if str(skill.get("rarity", "")) != "2":
+            continue
+
+        source_name = str(
+            pick(
+                skill,
+                ("jpname", "name_jp", "name_ja", "name_jpn", "name", "title_ja"),
+            )
+        ).strip()
+        if not source_name:
+            continue
+
+        candidates: list[str] = []
+        for version_id in normalize_skill_ids(skill.get("versions", [])):
+            version = skills_by_id.get(version_id)
+            if not version or str(version.get("rarity", "")) != "1":
+                continue
+            target_name = str(
+                pick(
+                    version,
+                    ("jpname", "name_jp", "name_ja", "name_jpn", "name", "title_ja"),
+                )
+            ).strip()
+            if (
+                target_name
+                and target_name != source_name
+                and not target_name.endswith(("×", "✕"))
+                and target_name not in candidates
+            ):
+                candidates.append(target_name)
+
+        if not candidates:
+            continue
+
+        # 「○」「◎」の両方がある場合は、因子として扱う「○」を優先する。
+        aliases[source_name] = next(
+            (name for name in candidates if name.endswith("○")),
+            candidates[0],
+        )
+
+    return dict(sorted(aliases.items()))
+
+
 def normalize_skill_ids(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -506,6 +559,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
     )
     parser.add_argument(
+        "--factor-skill-aliases-json",
+        default=Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "data"
+        / "factor_skill_aliases.json",
+        type=Path,
+    )
+    parser.add_argument(
         "--replace",
         action="store_true",
         help="Replace cards.json instead of merging/updating by card name.",
@@ -539,6 +601,7 @@ def main() -> None:
     support_cards_data = read_json(args.support_cards)
     skills_data = read_json(args.skills)
     skill_map = make_skill_map(skills_data)
+    factor_skill_aliases = make_factor_skill_aliases(skills_data)
     event_paths = [path for path in [args.ssr_events, args.sr_events, *args.event_skills] if path]
     event_data_list = [read_json(path) for path in event_paths]
     event_skill_map = make_event_skill_map(event_data_list, skill_map)
@@ -556,11 +619,14 @@ def main() -> None:
         shutil.copy2(args.cards_json, backup_path)
 
     write_json(args.cards_json, merged_cards)
+    write_json(args.factor_skill_aliases_json, factor_skill_aliases)
     print(
         json.dumps(
             {
                 "cards_json": str(args.cards_json),
+                "factor_skill_aliases_json": str(args.factor_skill_aliases_json),
                 "skill_map_count": len(skill_map),
+                "factor_skill_alias_count": len(factor_skill_aliases),
                 "event_file_count": len(event_paths),
                 "event_card_count": len(event_skill_map),
                 "imported_count": len(imported_cards),
