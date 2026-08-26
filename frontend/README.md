@@ -4,10 +4,11 @@
 
 ## 現在の役割
 
-- Vercelで公開するメインアプリ
-- サポカ検索、レース条件選択、スキル表示、編成表示を担当
-- `app/api/*` で静的JSONと編成保存APIを提供
-- FastAPIが無くてもVercel上で表示できる構成
+- 静的エクスポート(`output: "export"`)で公開するメインアプリ
+- サポカ検索、レース条件選択、スキル表示、編成表示(3スロット)を担当
+- データはビルド時に `src/data/*.json` から焼き込み。サーバ処理なし
+- 編成は3スロットをlocalStorageに自動保存(サーバ・DB不要)
+- Prisma(schema/scripts)はスキルデータ編集用。本番サイトからは使わない
 
 ## 起動
 
@@ -30,39 +31,35 @@ npm run dev -- --port 3001
 
 ```powershell
 npm run lint
-npm run build
-npm run prisma:generate
-npm run prisma:migrate -- --name init
-npm run prisma:deploy
+npm run build        # out/ に静的サイトを出力
+npm run prisma:studio    # 編集用DB(ラズパイ)の確認・修正
+npm run skills:import    # 抽出CSV -> RaceSkillテーブル
+npm run skills:export    # RaceSkillテーブル -> race_data.json
 ```
 
 ## 環境変数
 
-通常は未設定で動きます。
+サイト本体は環境変数なしで動きます。
 
-FastAPIなど外部APIを使う場合だけ設定します。
-
-```text
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-本番Vercelで `NEXT_PUBLIC_API_URL` が未設定の場合は、Next.js内の `/api/cards` と `/api/race-data` を使います。
-
-編成保存を使う場合はPostgreSQLの接続先を設定します。
+スキルデータ編集(skills:*、prisma:*)を使うときだけ、編集用DBの接続先を設定します。
 
 ```text
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+DATABASE_URL=postgresql://uma:PASSWORD@uma-pi:5432/uma_tool
 ```
 
-`DATABASE_URL` が未設定でも画面表示は動きますが、`/api/deck` の保存は失敗します。
+## デプロイ
+
+`npm run build` で `out/` に静的ファイルが生成されます。Cloudflare Pages / Vercel / GitHub Pages などの静的ホスティングにそのまま置けます。
+
+Cloudflare Pagesの場合: ビルドコマンド `npm run build`、出力ディレクトリ `out`。
 
 ## 主要ファイル
 
 | 目的 | ファイル |
 | --- | --- |
 | メイン画面 | `app/page.tsx` |
-| 編成保存API | `app/api/deck/route.ts` |
-| Prisma設定 | `prisma/schema.prisma`, `prisma.config.ts` |
+| Prisma設定(編集用DB) | `prisma/schema.prisma` |
+| スキルDB取り込み/書き出し | `scripts/import-race-skills.mjs`, `scripts/export-race-data.mjs` |
 | 全体スタイル | `app/globals.css` |
 | サポカ検索 | `src/components/card-search-panel.tsx` |
 | 編成スロット | `src/components/deck-slot.tsx` |
@@ -72,6 +69,7 @@ DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
 | サポカデータ | `src/data/cards.json` |
 | レース条件データ | `src/data/race_data.json` |
 | 因子周回除外スキル | `src/data/non_factor_skills.json` |
+| 全スキルマスター | `src/data/skill_master.json` |
 
 ## モード差分
 

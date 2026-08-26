@@ -7,3 +7,6 @@ frontend/.next/
 
 .env
 .env.*
+
+# ラズパイからのローカルコピー(APIキー・webhook含むためコミット禁止)
+_pi/

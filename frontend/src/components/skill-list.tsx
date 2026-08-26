@@ -5,6 +5,7 @@ import { StrategyDetail } from "../lib/types";
 type SkillListProps = {
   strategyDetail: StrategyDetail;
   deckSkills: Set<string>;
+  onSkillClick?: (skill: string) => void;
 };
 
 function SkillGroup({
@@ -13,12 +14,14 @@ function SkillGroup({
   skills,
   deckSkills,
   scrollable = false,
+  onSkillClick,
 }: {
   title: string;
   tone: "super" | "recommended";
   skills: string[];
   deckSkills: Set<string>;
   scrollable?: boolean;
+  onSkillClick?: (skill: string) => void;
 }) {
   const badgeClass =
     tone === "super"
@@ -52,18 +55,30 @@ function SkillGroup({
         ) : (
           skills.map((skill) => {
             const achieved = deckSkills.has(skill);
+            const baseClass = achieved
+              ? "rounded-md border border-emerald-700 bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
+              : "rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground";
+
+            if (!onSkillClick) {
+              return (
+                <span key={skill} className={baseClass}>
+                  {skill}
+                  {achieved ? " ✓" : ""}
+                </span>
+              );
+            }
+
             return (
-              <span
+              <button
                 key={skill}
-                className={
-                  achieved
-                    ? "rounded-md border border-emerald-700 bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm"
-                    : "rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-semibold text-muted-foreground"
-                }
+                type="button"
+                onClick={() => onSkillClick(skill)}
+                title={`「${skill}」を持つサポカを検索`}
+                className={`${baseClass} cursor-pointer transition hover:ring-2 hover:ring-ring focus:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
               >
                 {skill}
                 {achieved ? " ✓" : ""}
-              </span>
+              </button>
             );
           })
         )}
@@ -72,7 +87,7 @@ function SkillGroup({
   );
 }
 
-export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
+export function SkillList({ strategyDetail, deckSkills, onSkillClick }: SkillListProps) {
   return (
     <div className="grid min-h-[168px] grid-cols-1 gap-4 md:h-[216px] md:min-h-0 md:grid-cols-[minmax(360px,0.95fr)_minmax(0,1.45fr)]">
       <div className="h-full min-h-0 overflow-hidden rounded-md bg-background/40 p-2">
@@ -82,6 +97,7 @@ export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
           skills={strategyDetail.super_recommended}
           deckSkills={deckSkills}
           scrollable
+          onSkillClick={onSkillClick}
         />
       </div>
       <div className="h-full min-h-0 overflow-hidden rounded-md bg-background/40 p-2">
@@ -91,6 +107,7 @@ export function SkillList({ strategyDetail, deckSkills }: SkillListProps) {
           skills={strategyDetail.recommended}
           deckSkills={deckSkills}
           scrollable
+          onSkillClick={onSkillClick}
         />
       </div>
     </div>

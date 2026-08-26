@@ -25,6 +25,7 @@ type CardSearchPanelProps = {
   missingSuperSkills: string[];
   missingRecommendedSkills: string[];
   onAddCard: (card: SupportCard) => void;
+  onSkillClick?: (skill: string) => void;
   variant?: "sidebar" | "embedded";
   headerActions?: ReactNode;
 };
@@ -40,6 +41,7 @@ export function CardSearchPanel({
   missingSuperSkills,
   missingRecommendedSkills,
   onAddCard,
+  onSkillClick,
   variant = "sidebar",
   headerActions,
 }: CardSearchPanelProps) {
@@ -50,11 +52,11 @@ export function CardSearchPanel({
       className={`flex h-full flex-col bg-card ${
         isEmbedded
           ? "w-full rounded-lg border border-border"
-          : "w-[420px] flex-shrink-0 border-r border-border"
+          : "w-[400px] flex-shrink-0 border-r border-border"
       }`}
     >
-      <div className={`border-b border-border bg-card ${isEmbedded ? "p-4" : "p-5"}`}>
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <div className={`border-b border-border bg-card ${isEmbedded ? "p-3" : "p-4"}`}>
+        <div className="mb-3 flex items-center justify-between gap-3">
           <h1 className="flex items-center gap-2 whitespace-nowrap text-lg font-semibold text-card-foreground">
             サポカを探す
           </h1>
@@ -70,21 +72,21 @@ export function CardSearchPanel({
           value={searchKeyword}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="スキル名・キャラ名・カード名で検索..."
-          className="mb-4 w-full rounded-md border border-input bg-card px-3 py-2.5 text-sm font-medium outline-none transition focus:ring-2 focus:ring-ring"
+          className="mb-3 w-full rounded-md border border-input bg-card px-3 py-2 text-sm font-medium outline-none transition focus:ring-2 focus:ring-ring"
         />
 
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="grid grid-cols-4 gap-1.5">
           {FILTERS.map((filter) => (
             <button
               key={filter}
               onClick={() => onFilterChange(filter)}
-              className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+              className={`rounded-md px-1 py-1 text-xs font-semibold transition-colors ${
                 activeFilter === filter
                   ? "material-button-primary"
                   : "bg-secondary text-secondary-foreground hover:bg-muted"
               }`}
             >
-              {filter}
+              {filter === "友人/グループ" ? "友人/グル" : filter}
             </button>
           ))}
         </div>
@@ -106,7 +108,7 @@ export function CardSearchPanel({
           </div>
         </div>
 
-        <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+        <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pr-1">
           {displayedCards.map((card) => {
             const isAdded = deck.some((deckCard) => deckCard.id === card.id);
             const style = getTypeStyle(card.type);
@@ -117,6 +119,12 @@ export function CardSearchPanel({
               usageMode
             );
             const cardSkills = getCardSkills(card, usageMode);
+            const superHitCount = cardSkills.filter((skill) =>
+              missingSuperSkills.includes(skill)
+            ).length;
+            const recommendedHitCount = cardSkills.filter((skill) =>
+              missingRecommendedSkills.includes(skill)
+            ).length;
 
             return (
               <div
@@ -144,6 +152,22 @@ export function CardSearchPanel({
                       >
                         {card.rarity}
                       </span>
+                      {superHitCount > 0 ? (
+                        <span
+                          className="rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700"
+                          title="不足している超おすすめスキルの所持数"
+                        >
+                          超{superHitCount}
+                        </span>
+                      ) : null}
+                      {recommendedHitCount > 0 ? (
+                        <span
+                          className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700"
+                          title="不足しているおすすめスキルの所持数"
+                        >
+                          推{recommendedHitCount}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="line-clamp-2 text-sm font-semibold leading-snug text-card-foreground">
                       {card.name}
@@ -164,26 +188,44 @@ export function CardSearchPanel({
                   </div>
                 </div>
 
-                <div className="flex max-h-[4.5rem] flex-wrap gap-1.5 overflow-hidden">
+                <div className="flex flex-wrap gap-1.5">
                   {cardSkills.slice(0, 12).map((skill) => {
                     const superHit = missingSuperSkills.includes(skill);
                     const recommendedHit = missingRecommendedSkills.includes(skill);
 
-                    return (
-                        <span
-                          key={skill}
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                            superHit
-                              ? "border border-rose-300 bg-rose-50 text-rose-700"
-                              : recommendedHit
-                                ? "border border-amber-300 bg-amber-50 text-amber-700"
-                                : "bg-secondary text-muted-foreground"
-                          }`}
-                        >
+                    const chipClass = `rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                      superHit
+                        ? "border border-rose-300 bg-rose-50 text-rose-700"
+                        : recommendedHit
+                          ? "border border-amber-300 bg-amber-50 text-amber-700"
+                          : "bg-secondary text-muted-foreground"
+                    }`;
+
+                    if (!onSkillClick) {
+                      return (
+                        <span key={skill} className={chipClass}>
                           {skill}
                         </span>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={skill}
+                        type="button"
+                        onClick={() => onSkillClick(skill)}
+                        title={`「${skill}」を持つサポカを検索`}
+                        className={`${chipClass} cursor-pointer transition hover:ring-2 hover:ring-ring focus:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+                      >
+                        {skill}
+                      </button>
                     );
                   })}
+                  {cardSkills.length > 12 ? (
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      +{cardSkills.length - 12}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             );
