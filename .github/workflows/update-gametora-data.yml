@@ -65,22 +65,16 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Create pull request
+      - name: Create or update pull request
         if: steps.changes.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BRANCH_NAME: data/gametora-${{ github.run_id }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH_NAME"
-          git add \
-            frontend/src/data/cards.json \
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          commit-message: "Update GameTora support card data"
+          title: "Update GameTora support card data"
+          body: "Updated support-card data and factor-skill aliases from GameTora."
+          branch: data/gametora-update
+          base: main
+          add-paths: |
+            frontend/src/data/cards.json
             frontend/src/data/factor_skill_aliases.json
-          git commit -m "Update GameTora support card data"
-          git push origin "$BRANCH_NAME"
-          gh pr create \
-            --base main \
-            --head "$BRANCH_NAME" \
-            --title "Update GameTora support card data" \
-            --body "Updated support-card data and factor-skill aliases from GameTora support-cards, skills, ssr-events, and sr-events."
