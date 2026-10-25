@@ -1,0 +1,1184 @@
+{
+  "ssr": [
+    [
+      30001,
+      [
+        [
+          557,
+          [
+            [
+              28,
+              [
+                45,
+                72,
+                472
+              ]
+            ]
+          ],
+          830001001,
+          [
+            9,
+            [
+              [
+                "pre_first_anni",
+                [
+                  557,
+                  [
+                    [
+                      28,
+                      [
+                        48,
+                        46
+                      ]
+                    ]
+                  ],
+                  830001001
+                ]
+              ]
+            ]
+          ]
+        ],
+        [
+          558,
+          [
+            [
+              724,
+              [
+                42,
+                45,
+                72,
+                52,
+                41,
+                473,
+                373
+              ]
+            ],
+            [
+              725,
+              [
+                99,
+                66,
+                373,
+                342
+              ]
+            ]
+          ],
+          830001002,
+          [
+            9,
+            [
+              [
+                "pre_first_anni",
+                [
+                  558,
+                  [
+                    [
+                      724,
+                      [
+                        42,
+                        48,
+                        46,
+                        52,
+                        373
+                      ]
+                    ],
+                    [
+                      725,
+                      [
+                        99,
+                        66,
+                        373,
+                        342
+                      ]
+                    ]
+                  ],
+                  830001002
+                ]
+              ]
+            ]
+          ]
+        ],
+        [
+          559,
+          [
+            [
+              28,
+              [
+                42,
+                48,
+                46,
+                68,
+                149,
+                373,
+                155,
+                42,
+                47,
+                43,
+                39,
+                474,
+                373
+              ]
+            ]
+          ],
+          830001003
+        ]
+      ]
+    ]
+  ],
+  "sr": [
+    [
+      20001,
+      [
+        [
+          357,
+          [
+            [
+              28,
+              [
+                66
+              ]
+            ]
+          ],
+          820001001
+        ],
+        [
+          358,
+          [
+            [
+              28,
+              [
+                66,
+                44,
+                331
+              ]
+            ]
+          ],
+          820001002
+        ]
+      ]
+    ]
+  ],
+  "rewards": [
+    null,
+    null,
+    null,
+    [
+      "gu",
+      "+15"
+    ],
+    null,
+    [
+      "mo",
+      "+1"
+    ],
+    [
+      "en",
+      "-10"
+    ],
+    [
+      "st",
+      "+15"
+    ],
+    [
+      "pt",
+      "+15"
+    ],
+    [
+      "sp",
+      "+10"
+    ],
+    [
+      "st",
+      "+5"
+    ],
+    [
+      "sp",
+      "+15"
+    ],
+    [
+      "sp",
+      "+5"
+    ],
+    null,
+    null,
+    null,
+    [
+      "gu",
+      "+10"
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "in",
+      "+10"
+    ],
+    null,
+    [
+      "gu",
+      "+5"
+    ],
+    null,
+    null,
+    null,
+    [
+      "st",
+      "+10"
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "en",
+      "+20"
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "sk",
+      "+1",
+      200512
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "di"
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "sk",
+      "+1",
+      200931
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "ee"
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "bo",
+      "+5",
+      1001
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    [
+      "sk",
+      "+1",
+      201142
+    ],
+    [
+      "sk",
+      "+2",
+      201342
+    ],
+    [
+      "sk",
+      "+3",
+      200511
+    ],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "cards": [
+    {
+      "char_id": 1005,
+      "char_name": "Fuji Kiseki",
+      "effects": [
+        [
+          1,
+          10,
+          -1,
+          -1,
+          -1,
+          15,
+          15,
+          -1,
+          -1,
+          20,
+          -1,
+          -1
+        ],
+        [
+          2,
+          10,
+          -1,
+          -1,
+          -1,
+          -1,
+          40,
+          -1,
+          -1,
+          -1,
+          50,
+          -1
+        ],
+        [
+          7,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          1,
+          -1
+        ],
+        [
+          14,
+          -1,
+          10,
+          -1,
+          -1,
+          -1,
+          20,
+          -1,
+          -1,
+          -1,
+          25,
+          -1
+        ],
+        [
+          15,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          1,
+          -1,
+          5,
+          -1,
+          -1
+        ],
+        [
+          16,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          5,
+          -1,
+          10,
+          -1,
+          -1
+        ],
+        [
+          17,
+          -1,
+          1,
+          -1,
+          -1,
+          -1,
+          2,
+          -1,
+          -1,
+          -1,
+          2,
+          -1
+        ],
+        [
+          18,
+          -1,
+          5,
+          -1,
+          -1,
+          -1,
+          30,
+          -1,
+          -1,
+          -1,
+          40,
+          -1
+        ],
+        [
+          19,
+          -1,
+          -1,
+          5,
+          -1,
+          20,
+          20,
+          -1,
+          -1,
+          35,
+          -1,
+          -1
+        ],
+        [
+          31,
+          1,
+          -1,
+          -1,
+          -1,
+          -1,
+          3,
+          -1,
+          -1,
+          -1,
+          4,
+          -1
+        ]
+      ],
+      "event_skills": [
+        200931,
+        200582
+      ],
+      "hints": {
+        "hint_others": [
+          {
+            "hint_type": 5,
+            "hint_value": 6
+          },
+          {
+            "hint_type": 30,
+            "hint_value": 5
+          }
+        ],
+        "hint_skills": [
+          200182,
+          200222,
+          200771,
+          201042,
+          201072
+        ]
+      },
+      "name_jp": "フジキセキ",
+      "name_ko": "후지 키세키",
+      "name_tw": "富士奇石",
+      "obtained": "gacha",
+      "rarity": 2,
+      "release": "2021-02-24",
+      "release_en": "2025-06-26",
+      "release_ko": "2022-06-20",
+      "release_zh_tw": "2022-06-27",
+      "support_id": 20001,
+      "tid": "2d",
+      "title_en": "[Well, Look Who's Home]",
+      "title_ja": "[やれやれ、お帰り]",
+      "title_ko": "[나 참, 어서 와]",
+      "title_zh_tw": "[哎呀呀，終於回來了]",
+      "type": "intelligence",
+      "unique": {
+        "effects": [
+          {
+            "type": 30,
+            "value": 1
+          },
+          {
+            "type": 13,
+            "value": 20
+          }
+        ],
+        "level": 25
+      },
+      "url_name": "20001-fuji-kiseki"
+    },
+    {
+      "char_id": 1001,
+      "char_name": "Special Week",
+      "effects": [
+        [
+          1,
+          10,
+          -1,
+          -1,
+          -1,
+          -1,
+          15,
+          15,
+          -1,
+          -1,
+          20,
+          -1
+        ],
+        [
+          2,
+          10,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          40,
+          -1,
+          -1,
+          -1,
+          60
+        ],
+        [
+          5,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          1,
+          -1,
+          -1,
+          -1
+        ],
+        [
+          8,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          5,
+          10
+        ],
+        [
+          14,
+          -1,
+          -1,
+          10,
+          -1,
+          -1,
+          20,
+          20,
+          -1,
+          -1,
+          25,
+          -1
+        ],
+        [
+          17,
+          -1,
+          -1,
+          1,
+          -1,
+          -1,
+          2,
+          2,
+          -1,
+          -1,
+          2,
+          -1
+        ],
+        [
+          18,
+          -1,
+          -1,
+          5,
+          -1,
+          -1,
+          30,
+          30,
+          -1,
+          -1,
+          40,
+          -1
+        ],
+        [
+          19,
+          -1,
+          -1,
+          -1,
+          5,
+          -1,
+          20,
+          20,
+          -1,
+          -1,
+          35,
+          -1
+        ]
+      ],
+      "event_skills": [
+        201142,
+        201342,
+        200512,
+        200511,
+        200762
+      ],
+      "hints": {
+        "hint_others": [
+          {
+            "hint_type": 1,
+            "hint_value": 1
+          },
+          {
+            "hint_type": 3,
+            "hint_value": 1
+          },
+          {
+            "hint_type": 4,
+            "hint_value": 6
+          }
+        ],
+        "hint_skills": [
+          200162,
+          200232,
+          200512,
+          200612,
+          200732,
+          201352,
+          201542
+        ]
+      },
+      "name_jp": "スペシャルウィーク",
+      "name_ko": "스페셜 위크",
+      "name_tw": "特別週",
+      "obtained": "gacha",
+      "rare_stuff": [
+        "ee"
+      ],
+      "rarity": 3,
+      "release": "2021-02-24",
+      "release_en": "2025-06-26",
+      "release_ko": "2022-06-20",
+      "release_zh_tw": "2022-06-27",
+      "support_id": 30001,
+      "tid": "3I",
+      "title_en": "[The Brightest Star in Japan!]",
+      "title_ja": "[日本一のステージを]",
+      "title_ko": "[일본 최고의 무대를]",
+      "title_zh_tw": "[站上日本第一的舞台]",
+      "type": "guts",
+      "unique": {
+        "effects": [
+          {
+            "type": 6,
+            "value": 1
+          },
+          {
+            "type": 12,
+            "value": 20
+          }
+        ],
+        "level": 30
+      },
+      "url_name": "30001-special-week"
+    }
+  ],
+  "skills": [
+    {
+      "id": 200162,
+      "jpname": "道悪○",
+      "rarity": 1
+    },
+    {
+      "id": 200182,
+      "jpname": "夏ウマ娘○",
+      "rarity": 1
+    },
+    {
+      "id": 200222,
+      "jpname": "曇りの日○",
+      "rarity": 1
+    },
+    {
+      "id": 200232,
+      "jpname": "雨の日○",
+      "rarity": 1
+    },
+    {
+      "id": 200511,
+      "jpname": "全身全霊",
+      "rarity": 2
+    },
+    {
+      "id": 200512,
+      "jpname": "末脚",
+      "rarity": 1
+    },
+    {
+      "id": 200582,
+      "jpname": "抜け出し準備",
+      "rarity": 1
+    },
+    {
+      "id": 200612,
+      "jpname": "外差し準備",
+      "rarity": 1
+    },
+    {
+      "id": 200732,
+      "jpname": "食い下がり",
+      "rarity": 1
+    },
+    {
+      "id": 200762,
+      "jpname": "別腹タンク",
+      "rarity": 1
+    },
+    {
+      "id": 200771,
+      "jpname": "トリック（前）",
+      "rarity": 1
+    },
+    {
+      "id": 200931,
+      "jpname": "追込焦り",
+      "rarity": 1
+    },
+    {
+      "id": 201042,
+      "jpname": "マイルコーナー○",
+      "rarity": 1
+    },
+    {
+      "id": 201072,
+      "jpname": "負けん気",
+      "rarity": 1
+    },
+    {
+      "id": 201142,
+      "jpname": "軽やかステップ",
+      "rarity": 1
+    },
+    {
+      "id": 201342,
+      "jpname": "直滑降",
+      "rarity": 1
+    },
+    {
+      "id": 201352,
+      "jpname": "栄養補給",
+      "rarity": 1
+    },
+    {
+      "id": 201542,
+      "jpname": "差しのコツ○",
+      "rarity": 1
+    }
+  ]
+}
