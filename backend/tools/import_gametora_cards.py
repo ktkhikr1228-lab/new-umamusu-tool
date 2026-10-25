@@ -43,6 +43,11 @@ DEFAULT_MANIFEST_URLS = (
 GAMETORA_DATA_BASE_URL = "https://gametora.com/data/umamusume"
 
 DOWNLOAD_TARGETS = {
+    "event_rewards": {
+        "manifest_key": "dict/evrew",
+        "path": "dict/evrew",
+        "argument": "event_rewards",
+    },
     "support_cards": {
         "manifest_key": "support-cards",
         "path": "support-cards",
@@ -273,6 +278,14 @@ def make_factor_skill_aliases(skills_data: Any) -> dict[str, str]:
     return dict(sorted(aliases.items()))
 
 
+def make_rare_skill_names(skills_data: Any, skill_map: dict[str, str]) -> set[str]:
+    # GameTora skill rarity 2 uses the gold style; support rarity is unrelated.
+    return set(resolve_skills([
+        str(skill["id"]) for skill in as_records(skills_data)
+        if str(skill.get("rarity")) == "2" and "id" in skill
+    ], skill_map))
+
+
 def normalize_skill_ids(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -357,10 +370,53 @@ def extract_skill_ids_from_event(value: Any, inside_skill_field: bool = False) -
     return skill_ids
 
 
-def make_event_skill_map(event_data_list: list[Any], skill_map: dict[str, str]) -> dict[str, list[str]]:
+# GameTora module 41374 decodes reward references by subtracting
+# tasty (5) + sushi (31). See backend/tests/fixtures/README.md.
+EVENT_REWARD_OFFSET = 36
+
+
+def extract_array_event_skill_ids(events: Any, rewards: Any) -> list[str]:
+    """Decode current JP outcomes only; numeric references index dict/evrew.
+
+    Event: [name_ref, [[choice_ref, [reward_ref, ...]], ...], story_id, ...].
+    Extra fields contain history/metadata, not additional current outcomes.
+    """
+    if not isinstance(rewards, list):
+        raise ValueError("Array training events require --event-rewards (dict/evrew).")
+    result: list[str] = []
+    for event in events:
+        if not isinstance(event, list) or len(event) < 2 or not isinstance(event[1], list):
+            raise ValueError("Invalid GameTora array event.")
+        for choice in event[1]:
+            if not isinstance(choice, list) or len(choice) < 2 or not isinstance(choice[1], list):
+                raise ValueError("Invalid GameTora array choice.")
+            for reference in choice[1]:
+                if type(reference) is not int or not 0 <= reference - EVENT_REWARD_OFFSET < len(rewards):
+                    raise ValueError(f"Invalid GameTora reward reference: {reference!r}")
+                reward = rewards[reference - EVENT_REWARD_OFFSET]
+                if isinstance(reward, list) and len(reward) >= 3 and reward[0] == "sk":
+                    result.extend(normalize_scalar_skill_id(reward[2]))
+    return result
+
+
+def make_event_skill_map(
+    event_data_list: list[Any],
+    skill_map: dict[str, str],
+    event_rewards: Any = None,
+) -> dict[str, list[str]]:
     event_skill_map: dict[str, list[str]] = {}
 
     for event_data in event_data_list:
+        array_records = []
+        if isinstance(event_data, list):
+            array_records = [record for record in event_data if isinstance(record, list)]
+        for record in array_records:
+            if len(record) != 2 or not isinstance(record[1], list):
+                raise ValueError("Invalid GameTora card event record.")
+            key = str(record[0])
+            names = resolve_skills(extract_array_event_skill_ids(record[1], event_rewards), skill_map)
+            if names:
+                event_skill_map[key] = merge_unique(event_skill_map.get(key, []), names)
         for event_record in as_records(event_data):
             card_id = pick(
                 event_record,
@@ -409,8 +465,10 @@ def convert_support_cards(
     support_cards_data: Any,
     skill_map: dict[str, str],
     event_skill_map: dict[str, list[str]] | None = None,
+    rare_skill_names: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     event_skill_map = event_skill_map or {}
+    rare_skill_names = rare_skill_names or set()
     cards: list[dict[str, Any]] = []
     for raw_card in as_records(support_cards_data):
         source_id = pick(
@@ -445,7 +503,7 @@ def convert_support_cards(
                 "rarity": normalize_rarity(pick(raw_card, ("rarity", "rare"))),
                 "type": normalize_type(pick(raw_card, ("type", "support_type", "supportType"))),
                 "skills": all_skills,
-                "rare_skills": [],
+                "rare_skills": [name for name in all_skills if name in rare_skill_names],
             }
         )
     return cards
@@ -530,6 +588,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skills", type=Path)
     parser.add_argument("--ssr-events", type=Path)
     parser.add_argument("--sr-events", type=Path)
+    parser.add_argument("--event-rewards", type=Path, help="GameTora dict/evrew JSON for array events.")
     parser.add_argument(
         "--download-latest",
         action="store_true",
@@ -592,6 +651,7 @@ def main() -> None:
         args.skills = args.skills or downloaded["skills"]
         args.ssr_events = args.ssr_events or downloaded["ssr_events"]
         args.sr_events = args.sr_events or downloaded["sr_events"]
+        args.event_rewards = args.event_rewards or downloaded["event_rewards"]
 
     if not args.support_cards or not args.skills:
         raise SystemExit(
@@ -604,8 +664,12 @@ def main() -> None:
     factor_skill_aliases = make_factor_skill_aliases(skills_data)
     event_paths = [path for path in [args.ssr_events, args.sr_events, *args.event_skills] if path]
     event_data_list = [read_json(path) for path in event_paths]
-    event_skill_map = make_event_skill_map(event_data_list, skill_map)
-    imported_cards = convert_support_cards(support_cards_data, skill_map, event_skill_map)
+    event_rewards = read_json(args.event_rewards) if args.event_rewards else None
+    event_skill_map = make_event_skill_map(event_data_list, skill_map, event_rewards)
+    rare_skill_names = make_rare_skill_names(skills_data, skill_map)
+    imported_cards = convert_support_cards(
+        support_cards_data, skill_map, event_skill_map, rare_skill_names
+    )
 
     existing_cards = [] if args.replace or not args.cards_json.exists() else read_json(args.cards_json)
     if not isinstance(existing_cards, list):
