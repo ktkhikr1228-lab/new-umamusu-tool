@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -43,6 +44,11 @@ DEFAULT_MANIFEST_URLS = (
 GAMETORA_DATA_BASE_URL = "https://gametora.com/data/umamusume"
 
 DOWNLOAD_TARGETS = {
+    "friend_events": {
+        "manifest_key": "training_events/friend",
+        "path": "training_events/friend",
+        "argument": "friend_events",
+    },
     "event_rewards": {
         "manifest_key": "dict/evrew",
         "path": "dict/evrew",
@@ -436,6 +442,97 @@ def make_event_skill_map(
     return event_skill_map
 
 
+def select_friend_event(event: Any, card_id: str) -> Any:
+    """Apply GameTora module 41374's card override (2) and disabled flag (14).
+
+    History (9) is not traversed. A disabled parent stays disabled after an
+    override, matching GameTora's decoded-object merge.
+    """
+    if not isinstance(event, list) or len(event) < 2:
+        raise ValueError("Invalid GameTora friend event.")
+    disabled = False
+    replacement = None
+    for metadata in event[3:]:
+        if not isinstance(metadata, list) or not metadata:
+            raise ValueError("Invalid GameTora friend event metadata.")
+        if metadata[0] == 14:
+            disabled = True
+        elif metadata[0] == 2:
+            if len(metadata) < 2 or not isinstance(metadata[1], list):
+                raise ValueError("Invalid GameTora friend event replacement.")
+            for variant in metadata[1]:
+                if not isinstance(variant, list) or len(variant) != 2:
+                    raise ValueError("Invalid GameTora friend event replacement.")
+                if str(variant[0]) == card_id and replacement is None:
+                    replacement = variant[1]
+    if disabled:
+        return None
+    if replacement is not None:
+        return select_friend_event(replacement, card_id)
+    return event
+
+
+def make_friend_event_skill_map(
+    friend_data: Any,
+    support_cards_data: Any,
+    skill_map: dict[str, str],
+    event_rewards: Any,
+) -> dict[str, list[str]]:
+    """Friend records are [char_id, milestones, random_events, outings]."""
+    if not isinstance(friend_data, list):
+        raise ValueError("Invalid GameTora friend event file.")
+    by_character: dict[str, list[Any]] = {}
+    for record in friend_data:
+        if (not isinstance(record, list) or len(record) != 4
+                or not all(isinstance(group, list) for group in record[1:])):
+            raise ValueError("Invalid GameTora friend event record.")
+        if record[0] is None:
+            if any(record[1:]):
+                raise ValueError("Nonempty GameTora friend placeholder.")
+            continue
+        by_character.setdefault(str(record[0]), []).extend(
+            event for index, group in enumerate(record[1:]) for event in group
+            if not (index == 0 and event is None)
+        )
+
+    result: dict[str, list[str]] = {}
+    for card in as_records(support_cards_data):
+        if normalize_type(pick(card, ("type", "support_type", "supportType"))) != "友人":
+            continue
+        card_id = str(pick(card, ("support_id", "supportId", "id", "support_card_id", "supportCardId", "card_id", "cardId")))
+        character_id = str(pick(card, ("char_id",)))
+        if not card_id or character_id not in by_character:
+            continue
+        names: list[str] = []
+        for event in by_character[character_id]:
+            selected = select_friend_event(event, card_id)
+            if selected is None or selected[1] == "no":
+                continue
+            names = merge_unique(names, resolve_skills(
+                extract_array_event_skill_ids([selected], event_rewards), skill_map
+            ))
+        # Preserve empty entries to distinguish a present record with no hints.
+        result[card_id] = names
+    return result
+
+
+def find_missing_skill_cards(
+    cards: list[dict[str, Any]],
+    friend_event_skill_map: dict[str, list[str]] | None = None,
+) -> list[dict[str, str]]:
+    missing = []
+    for card in cards:
+        if card["skills"]:
+            continue
+        source_id = card["source_id"]
+        reason = "no_resolved_skills"
+        if (card["type"] == "友人" and friend_event_skill_map is not None
+                and source_id not in friend_event_skill_map):
+            reason = "friend_events_not_in_source"
+        missing.append({"source_id": source_id, "name": card["name"], "reason": reason})
+    return missing
+
+
 def normalize_type(value: Any) -> str:
     text = str(value or "").strip()
     return TYPE_LABELS.get(text.lower(), text)
@@ -588,6 +685,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skills", type=Path)
     parser.add_argument("--ssr-events", type=Path)
     parser.add_argument("--sr-events", type=Path)
+    parser.add_argument("--friend-events", type=Path, help="GameTora training_events/friend JSON.")
     parser.add_argument("--event-rewards", type=Path, help="GameTora dict/evrew JSON for array events.")
     parser.add_argument(
         "--download-latest",
@@ -651,6 +749,7 @@ def main() -> None:
         args.skills = args.skills or downloaded["skills"]
         args.ssr_events = args.ssr_events or downloaded["ssr_events"]
         args.sr_events = args.sr_events or downloaded["sr_events"]
+        args.friend_events = args.friend_events or downloaded["friend_events"]
         args.event_rewards = args.event_rewards or downloaded["event_rewards"]
 
     if not args.support_cards or not args.skills:
@@ -666,10 +765,22 @@ def main() -> None:
     event_data_list = [read_json(path) for path in event_paths]
     event_rewards = read_json(args.event_rewards) if args.event_rewards else None
     event_skill_map = make_event_skill_map(event_data_list, skill_map, event_rewards)
+    friend_event_skill_map = None
+    if args.friend_events:
+        friend_event_skill_map = make_friend_event_skill_map(
+            read_json(args.friend_events), support_cards_data, skill_map, event_rewards
+        )
+        for card_id, names in friend_event_skill_map.items():
+            event_skill_map[card_id] = merge_unique(event_skill_map.get(card_id, []), names)
     rare_skill_names = make_rare_skill_names(skills_data, skill_map)
     imported_cards = convert_support_cards(
         support_cards_data, skill_map, event_skill_map, rare_skill_names
     )
+
+    missing_skill_cards = find_missing_skill_cards(imported_cards, friend_event_skill_map)
+    for card in missing_skill_cards:
+        print(f"WARNING: No resolved skills: {card['source_id']} {card['name']} "
+              f"({card['reason']})", file=sys.stderr)
 
     existing_cards = [] if args.replace or not args.cards_json.exists() else read_json(args.cards_json)
     if not isinstance(existing_cards, list):
@@ -691,8 +802,11 @@ def main() -> None:
                 "factor_skill_aliases_json": str(args.factor_skill_aliases_json),
                 "skill_map_count": len(skill_map),
                 "factor_skill_alias_count": len(factor_skill_aliases),
-                "event_file_count": len(event_paths),
+                "event_file_count": len(event_paths) + int(args.friend_events is not None),
                 "event_card_count": len(event_skill_map),
+                "friend_event_card_count": len(friend_event_skill_map or {}),
+                "missing_skill_card_count": len(missing_skill_cards),
+                "missing_skill_cards": missing_skill_cards,
                 "imported_count": len(imported_cards),
                 "added_count": added,
                 "updated_count": updated,
