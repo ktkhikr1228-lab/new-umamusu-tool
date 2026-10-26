@@ -28,7 +28,25 @@ jobs:
           python backend/tools/import_gametora_cards.py \
             --download-latest \
             --download-dir "$RUNNER_TEMP/gametora-data" \
-            --no-backup
+            --no-backup > "$RUNNER_TEMP/gametora-import.json"
+          cat "$RUNNER_TEMP/gametora-import.json"
+
+      - name: Research only cards with missing skills
+        run: |
+          python backend/tools/research_missing_card_skills.py \
+            --import-report "$RUNNER_TEMP/gametora-import.json" \
+            --skills "$RUNNER_TEMP/gametora-data"/skills.*.json \
+            --summary "$RUNNER_TEMP/missing-skill-research.md"
+          cat "$RUNNER_TEMP/missing-skill-research.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload missing-skill research for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: missing-skill-research
+          path: |
+            backend/data/missing_skill_research.json
+            ${{ runner.temp }}/missing-skill-research.md
+          retention-days: 30
 
       - name: Validate generated JSON
         run: |
@@ -41,7 +59,8 @@ jobs:
         run: |
           if git diff --quiet -- \
             frontend/src/data/cards.json \
-            frontend/src/data/factor_skill_aliases.json; then
+            frontend/src/data/factor_skill_aliases.json \
+            backend/data/missing_skill_research.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -71,10 +90,14 @@ jobs:
         with:
           token: ${{ github.token }}
           commit-message: "Update GameTora support card data"
-          title: "Update GameTora support card data"
-          body: "Updated support-card data and factor-skill aliases from GameTora."
+          title: "Update GameTora data and missing-skill research"
+          body: |
+            Updated support-card data and factor-skill aliases from GameTora.
+            Missing-skill cards are researched individually. See backend/data/missing_skill_research.json and the workflow summary for candidate skills and source URLs.
+            Research candidates are unapproved and are not applied to cards.json.
           branch: data/gametora-update
           base: main
           add-paths: |
             frontend/src/data/cards.json
             frontend/src/data/factor_skill_aliases.json
+            backend/data/missing_skill_research.json

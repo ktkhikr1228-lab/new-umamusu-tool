@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'backend/tools/import_gametora_cards.py'
+      - 'backend/tools/research_missing_card_skills.py'
+      - '.github/workflows/update-gametora-data.yml'
       - 'backend/tests/**'
       - '.github/workflows/test-gametora-import.yml'
 permissions:
