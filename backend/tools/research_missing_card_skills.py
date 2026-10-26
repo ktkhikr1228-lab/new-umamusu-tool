@@ -199,8 +199,8 @@ def research_missing(import_report, cards, skills, previous=None, fetch=fetch_ht
         card = by_id.get(card_id)
         if card is None:
             raise ValueError(f"Missing card metadata: {card_id}")
-        if card.get("skills"):
-            continue
+        # The import report describes raw upstream gaps. Frontend cards may
+        # already contain reviewed fallback skills and must still be researched.
         entry = research_card(card, skills, fetch)
         # Preserve previous findings separately on failure; never mark them as fresh.
         if entry["errors"] and card_id in old:

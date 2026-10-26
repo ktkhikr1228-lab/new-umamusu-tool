@@ -6,6 +6,7 @@ on:
       - 'backend/tools/research_missing_card_skills.py'
       - '.github/workflows/update-gametora-data.yml'
       - 'backend/tests/**'
+      - 'backend/data/reviewed_skill_supplements.json'
       - '.github/workflows/test-gametora-import.yml'
 permissions:
   contents: read

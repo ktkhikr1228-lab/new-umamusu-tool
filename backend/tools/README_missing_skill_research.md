@@ -2,7 +2,7 @@
 
 The normal GameTora importer produces `missing_skill_cards`. The updater passes
 that report to `research_missing_card_skills.py`, which searches **only** those
-card IDs whose imported skill lists remain empty. No-missing-card runs make no
+card IDs whose raw GameTora skill lists remain empty (before reviewed fallback). No-missing-card runs make no
 search or source-page requests. This does not detect partially missing skill lists.
 
 Each query uses character, card title and rarity. If no matching evidence is
@@ -37,8 +37,8 @@ not a guarantee of execution at the exact minute. Serialized workflow runs avoid
 simultaneous writes to the same update PR; pending runs may be coalesced by GitHub.
 Research-only changes skip Node installation and frontend builds, while still
 updating the review report/PR and run artifacts. A card
-leaves the report when the normal import supplies skills. No automated approval,
-manual override or cross-site skill application is included.
+leaves the report when the raw GameTora import supplies skills. Separate reviewed
+supplements are described below; the researcher itself never applies candidates.
 
 The updater attaches JSON/Markdown artifacts and writes the summary to its run
 page even if frontend data is unchanged. Research changes also qualify for the
@@ -68,3 +68,38 @@ and those same three plus 神速 for SSR. The SSR page lists came from GameWith
 and Game8; R came from GameWith. 28 tests passed, including source identity,
 section isolation, missing-only searches, shorter-query fallback, stable output,
 changed candidates, resolved cards, failure handling and no-network CLI runs.
+
+## Reviewed fallback skills for the frontend
+
+`backend/data/reviewed_skill_supplements.json` is a separately reviewed input to
+the importer, not an output of the researcher. It contains source ID, character,
+card title, rarity, type, review date, evidence URLs, and exact skill ID/name pairs.
+Current entries cover Azuma R 10149 and SSR 30323. The R entry has one source;
+SSR has two. This is an explicit reviewed exception, not automatic consensus.
+Merging a PR containing this file and regenerated cards.json activates the
+reviewed fallback through the existing Vercel deployment path.
+
+After computing raw missing-card diagnostics, the importer applies these records
+only to cards with an empty GameTora skill list and an exact identity match. Gold
+classification still uses GameTora skill rarity, not source-site prose. Invalid
+identity, duplicate records/skills, missing provenance or unknown/mismatched skill
+IDs fail before cards/aliases are written. Entries for absent cards add nothing.
+`--skill-supplements` selects a different reviewed file for offline validation;
+a schema_version 1 file with an empty cards list disables fallback.
+
+Repeated updates preserve reviewed skills while GameTora remains empty. If
+GameTora supplies any skills later, that source list wins: fallback is not appended
+to a partial list. `skill_supplements` in importer JSON reports `applied`,
+`source_matches` or `source_differs` with differences; disagreements also warn on
+stderr. The reviewed entry can then be removed in a follow-up PR.
+
+`missing_skill_cards` continues to describe raw upstream gaps. The researcher
+uses that report as authoritative, even if cards.json already contains fallback
+skills, so the 12:15/15:00/18:00/21:00 JST searches continue while GameTora is empty.
+New search candidates never replace a reviewed entry without another review.
+
+Validation: 34 offline tests passed, including repeated CLI imports, raw-gap
+reporting, continuing research after fallback, source recovery/disagreement and
+input validation. The frontend production build passed; getCardSkills returns
+three normal skills for both Azuma cards in factor mode and the SSR gold skill
+in training mode. Generated frontend changes are limited to these two cards.

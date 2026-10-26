@@ -606,6 +606,62 @@ def convert_support_cards(
     return cards
 
 
+def apply_reviewed_skill_supplements(
+    cards: list[dict[str, Any]],
+    supplements: Any,
+    skill_map: dict[str, str],
+    rare_skill_names: set[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Apply reviewed records only while the upstream card has no skills.
+
+    This file is maintained through reviewable PRs, never generated from search.
+    Nonempty upstream skills take precedence and differences are reported.
+    """
+    if (not isinstance(supplements, dict) or supplements.get("schema_version") != 1
+            or not isinstance(supplements.get("cards"), list)):
+        raise ValueError("Invalid reviewed skill supplements file.")
+    result = [{**card} for card in cards]
+    by_id = {card["source_id"]: card for card in result}
+    seen = set()
+    report = []
+    for entry in supplements["cards"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("source_id"), str):
+            raise ValueError("Invalid reviewed skill supplement record.")
+        card_id = entry["source_id"]
+        if card_id in seen:
+            raise ValueError(f"Duplicate skill supplement: {card_id}")
+        seen.add(card_id)
+        card = by_id.get(card_id)
+        if card is None:
+            continue
+        if any(entry.get(key) != card.get(key) for key in ("char", "card", "rarity", "type")):
+            raise ValueError(f"Skill supplement card identity mismatch: {card_id}")
+        sources = entry.get("sources")
+        if (not entry.get("reviewed_on") or not isinstance(sources, list) or not sources
+                or any(not isinstance(url, str) or not url.startswith("https://") for url in sources)):
+            raise ValueError(f"Skill supplement requires review provenance: {card_id}")
+        if not isinstance(entry.get("skills"), list) or not entry["skills"]:
+            raise ValueError(f"Empty reviewed skill supplement: {card_id}")
+        names = []
+        for skill in entry["skills"]:
+            if (not isinstance(skill, dict) or not isinstance(skill.get("id"), str)
+                    or not skill.get("name") or skill_map.get(skill["id"]) != skill["name"]):
+                raise ValueError(f"Unknown/mismatched supplement skill: {card_id}")
+            if skill["name"] in names:
+                raise ValueError(f"Duplicate supplement skill: {card_id}")
+            names.append(skill["name"])
+        if card["skills"]:
+            status = "source_matches" if set(card["skills"]) == set(names) else "source_differs"
+            report.append({"source_id": card_id, "status": status,
+                           "only_in_supplement": sorted(set(names) - set(card["skills"])),
+                           "only_in_source": sorted(set(card["skills"]) - set(names))})
+            continue
+        card["skills"] = names
+        card["rare_skills"] = [name for name in names if name in rare_skill_names]
+        report.append({"source_id": card_id, "status": "applied", "skills": names})
+    return result, report
+
+
 def merge_cards(
     existing_cards: list[dict[str, Any]],
     imported_cards: list[dict[str, Any]],
@@ -681,6 +737,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Import GameTora support-cards and skills JSON into cards.json."
     )
+    parser.add_argument("--skill-supplements", type=Path,
+        default=Path(__file__).resolve().parents[1] / "data/reviewed_skill_supplements.json",
+        help="Reviewed fallback skills; applied only to upstream-empty cards.")
     parser.add_argument("--support-cards", type=Path)
     parser.add_argument("--skills", type=Path)
     parser.add_argument("--ssr-events", type=Path)
@@ -779,8 +838,17 @@ def main() -> None:
 
     missing_skill_cards = find_missing_skill_cards(imported_cards, friend_event_skill_map)
     for card in missing_skill_cards:
-        print(f"WARNING: No resolved skills: {card['source_id']} {card['name']} "
+        print(f"WARNING: GameTora has no resolved skills: {card['source_id']} {card['name']} "
               f"({card['reason']})", file=sys.stderr)
+
+    # Keep missing_skill_cards based on raw GameTora data, so research continues
+    # even while reviewed supplements make the frontend usable.
+    imported_cards, supplement_report = apply_reviewed_skill_supplements(
+        imported_cards, read_json(args.skill_supplements), skill_map, rare_skill_names
+    )
+    for item in supplement_report:
+        if item["status"] == "source_differs":
+            print(f"WARNING: Upstream skills differ from supplement: {item['source_id']}", file=sys.stderr)
 
     existing_cards = [] if args.replace or not args.cards_json.exists() else read_json(args.cards_json)
     if not isinstance(existing_cards, list):
@@ -807,6 +875,8 @@ def main() -> None:
                 "friend_event_card_count": len(friend_event_skill_map or {}),
                 "missing_skill_card_count": len(missing_skill_cards),
                 "missing_skill_cards": missing_skill_cards,
+                "skill_supplement_count": sum(item["status"] == "applied" for item in supplement_report),
+                "skill_supplements": supplement_report,
                 "imported_count": len(imported_cards),
                 "added_count": added,
                 "updated_count": updated,
