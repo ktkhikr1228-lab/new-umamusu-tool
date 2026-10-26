@@ -76,3 +76,40 @@ No Raspberry Pi access, cron, monitoring, or Discord settings were involved.
 Validation: 11 unittest tests passed locally on Python 3.13. The full frontend
 production build, including TypeScript, passed with freshly imported live data.
 The PR workflow checks the importer on the existing updater's Python 3.12.
+
+## Friend events (2026-10-27)
+
+`gametora_friend.json` preserves the real char_id 9001 record from
+[friend.2390ceed.json](https://gametora.com/data/umamusume/training_events/friend.2390ceed.json),
+its three support cards from
+[support-cards.e1d19b5b.json](https://gametora.com/data/umamusume/support-cards.e1d19b5b.json),
+and referenced reward entries from `evrew.8bda1ecc.json` (indices preserved;
+unrelated entries null). Skill id/name/rarity fields come from `skills.49e8ca76.json`.
+
+Module 41374 linked above maps friend records by `supportData.char_id`, rather
+than support ID. The record is `[char_id, milestones, random_events, outings]`.
+Null milestone slots and the final `[null, [], [], []]` placeholder are empty.
+Event metadata 2 replaces the current event for a matching support ID; metadata
+14 disables the event. Metadata 9 is history and must not supply current hints.
+`"no"` choices do not grant hints. Tests cover the R/SSR/alternate SSR versions
+of Tazuna, including the disabled alternate event and different outing skills.
+
+The new `--friend-events` option accepts this file offline; `--download-latest`
+now downloads it automatically. Existing SSR/SR and named-event inputs keep their
+formats. Friend files belong in `--friend-events`, not `--event-skills`.
+
+Import JSON output includes `friend_event_card_count`, `missing_skill_card_count`,
+and `missing_skill_cards` (source ID, name, reason). Empty imported skill lists
+also emit stderr warnings. `friend_events_not_in_source` means a friend card has
+no matching character record in the supplied friend file; `no_resolved_skills`
+means no skill name was resolved, without asserting that source data is missing.
+A present friend record with no skill hints uses the latter reason. Offline runs
+without a friend file cannot assert friend-source absence. Empty data is reported
+without stopping an otherwise valid update or inventing skills.
+
+Live validation: all 23 friend card results exactly matched GameTora module
+41374's own decoder. All 566 combined card skill lists matched current main
+(the support-card source already redundantly supplies existing friend hints).
+Only Azuma 10149/30323 were reported with empty skills and absent friend records.
+18 offline tests passed. No generated production JSON, schedule, deployment,
+Raspberry Pi, or notification configuration is changed by this implementation.
