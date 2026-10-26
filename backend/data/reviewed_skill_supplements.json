@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "cards": [
+    {
+      "source_id": "10149",
+      "char": "吾妻",
+      "card": "巫女",
+      "rarity": "R",
+      "type": "友人",
+      "reviewed_on": "2026-10-27",
+      "sources": [
+        "https://gamewith.jp/uma-musume/article/show/584373"
+      ],
+      "skills": [
+        {
+          "id": "202552",
+          "name": "快速"
+        },
+        {
+          "id": "200512",
+          "name": "末脚"
+        },
+        {
+          "id": "204812",
+          "name": "弧を描いて"
+        }
+      ]
+    },
+    {
+      "source_id": "30323",
+      "char": "吾妻",
+      "card": "いとどめでたき、まつりかな",
+      "rarity": "SSR",
+      "type": "友人",
+      "reviewed_on": "2026-10-27",
+      "sources": [
+        "https://gamewith.jp/uma-musume/article/show/584254",
+        "https://game8.jp/umamusume/836270"
+      ],
+      "skills": [
+        {
+          "id": "202552",
+          "name": "快速"
+        },
+        {
+          "id": "200512",
+          "name": "末脚"
+        },
+        {
+          "id": "204812",
+          "name": "弧を描いて"
+        },
+        {
+          "id": "202551",
+          "name": "神速"
+        }
+      ]
+    }
+  ]
+}
