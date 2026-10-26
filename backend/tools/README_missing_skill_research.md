@@ -27,7 +27,16 @@ Azuma R/SSR findings are included for review only.
 Statuses: `needs_review`, `not_found`, `search_failed`, `fetch_failed`. Fetch
 failures are recorded instead of being presented as success. Prior evidence is
 kept separately as `previous_evidence` if a later search fails. Missing entries
-are retried on **every existing data-update run**, with no new schedule. A card
+are retried on **every data-update run**, even when GameTora hashes are unchanged.
+Scheduled runs now occur daily at **12:15, 15:00, 18:00 and 21:00 JST** (03:15,
+06:00, 09:00 and 12:00 UTC). The normal GameTora import still runs first, so a
+resolved card is excluded before web searches. With no empty skill lists there
+are no search/source-page requests. Existing manual and Pi-triggered runs retain
+the same behavior. GitHub scheduled jobs can be delayed; these are target times,
+not a guarantee of execution at the exact minute. Serialized workflow runs avoid
+simultaneous writes to the same update PR; pending runs may be coalesced by GitHub.
+Research-only changes skip Node installation and frontend builds, while still
+updating the review report/PR and run artifacts. A card
 leaves the report when the normal import supplies skills. No automated approval,
 manual override or cross-site skill application is included.
 

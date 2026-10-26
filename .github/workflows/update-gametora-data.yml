@@ -3,8 +3,15 @@ name: Update GameTora data
 on:
   workflow_dispatch:
   schedule:
-    # 21:00 JST. The workflow only opens a PR when generated data changes.
-    - cron: "0 12 * * *"
+    # UTC: 03:15, 06:00, 09:00, 12:00 = JST: 12:15, 15:00, 18:00, 21:00.
+    # Run even when GameTora hashes are unchanged so other sites can catch up.
+    - cron: "15 3 * * *"
+    - cron: "0 6,9,12 * * *"
+
+# Pi/manual/scheduled runs all update the same data PR; serialize their writes.
+concurrency:
+  group: gametora-data-update
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -59,6 +66,13 @@ jobs:
         run: |
           if git diff --quiet -- \
             frontend/src/data/cards.json \
+            frontend/src/data/factor_skill_aliases.json; then
+            echo "frontend_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          if git diff --quiet -- \
+            frontend/src/data/cards.json \
             frontend/src/data/factor_skill_aliases.json \
             backend/data/missing_skill_research.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -67,7 +81,7 @@ jobs:
           fi
 
       - name: Set up Node.js
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.frontend_changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -75,12 +89,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.frontend_changed == 'true'
         working-directory: frontend
         run: npm ci
 
       - name: Build frontend
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.frontend_changed == 'true'
         working-directory: frontend
         run: npm run build
 
