@@ -19,10 +19,12 @@ const STRATEGY_ORDER = ["逃げ", "先行", "差し", "追込"];
 const CONTACT_FORM_URL =
   "https://docs.google.com/forms/d/e/1FAIpQLSfGUiRhR6bkJ3V54ywE-D9R_s5LJKAlppjFP2qt4YWFaYucuA/viewform";
 const DECK_STORAGE_KEY = "uma-tool-deck-v1"; // 旧形式(単一編成)。移行用に参照のみ
-const DECKS_STORAGE_KEY = "uma-tool-decks-v1";
+const DECKS_STORAGE_KEY = "uma-tool-decks-v1"; // 旧形式(共通3編成)。移行用に参照のみ
+const MODE_DECKS_STORAGE_KEY = "uma-tool-mode-decks-v1";
 const DECK_SLOT_COUNT = 3;
 
 type DeckStore = { active: number; slots: number[][] };
+type ModeDeckStore = Record<UsageMode, DeckStore>;
 const INITIAL_CARDS = cardsData as SupportCard[];
 const INITIAL_RACE_DATA = raceDataRaw as unknown as RaceData;
 const INITIAL_RACE = Object.keys(INITIAL_RACE_DATA)[0] || "";
@@ -56,38 +58,61 @@ function emptyDeckStore(): DeckStore {
   return { active: 0, slots: Array.from({ length: DECK_SLOT_COUNT }, () => []) };
 }
 
-function loadDeckStore(): DeckStore {
-  if (typeof window === "undefined") return emptyDeckStore();
+function toDeckStore(value: unknown): DeckStore | null {
+  if (!value || typeof value !== "object") return null;
+
+  const parsed = value as Partial<DeckStore>;
+  const slots = Array.from({ length: DECK_SLOT_COUNT }, (_, index) => {
+    const slot = parsed.slots?.[index];
+    return Array.isArray(slot) ? (slot as number[]) : [];
+  });
+  const active =
+    typeof parsed.active === "number" &&
+    parsed.active >= 0 &&
+    parsed.active < DECK_SLOT_COUNT
+      ? parsed.active
+      : 0;
+  return { active, slots };
+}
+
+function emptyModeDeckStore(): ModeDeckStore {
+  return {
+    factor: emptyDeckStore(),
+    training: emptyDeckStore(),
+  };
+}
+
+function loadModeDeckStore(): ModeDeckStore {
+  if (typeof window === "undefined") return emptyModeDeckStore();
 
   try {
-    const raw = window.localStorage.getItem(DECKS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<DeckStore>;
-      const slots = Array.from({ length: DECK_SLOT_COUNT }, (_, index) => {
-        const slot = parsed.slots?.[index];
-        return Array.isArray(slot) ? (slot as number[]) : [];
-      });
-      const active =
-        typeof parsed.active === "number" &&
-        parsed.active >= 0 &&
-        parsed.active < DECK_SLOT_COUNT
-          ? parsed.active
-          : 0;
-      return { active, slots };
+    const modeRaw = window.localStorage.getItem(MODE_DECKS_STORAGE_KEY);
+    if (modeRaw) {
+      const parsed = JSON.parse(modeRaw) as Partial<ModeDeckStore>;
+      const factor = toDeckStore(parsed.factor);
+      const training = toDeckStore(parsed.training);
+      if (factor && training) return { factor, training };
+    }
+
+    // 旧形式の共通編成は因子周回用として引き継ぐ。
+    const previousRaw = window.localStorage.getItem(DECKS_STORAGE_KEY);
+    if (previousRaw) {
+      const factor = toDeckStore(JSON.parse(previousRaw));
+      if (factor) return { factor, training: emptyDeckStore() };
     }
 
     // 旧形式(単一編成)からの移行
     const legacy = window.localStorage.getItem(DECK_STORAGE_KEY);
     if (legacy) {
       const ids = JSON.parse(legacy) as unknown;
-      const store = emptyDeckStore();
-      if (Array.isArray(ids)) store.slots[0] = ids as number[];
-      return store;
+      const factor = emptyDeckStore();
+      if (Array.isArray(ids)) factor.slots[0] = ids as number[];
+      return { factor, training: emptyDeckStore() };
     }
   } catch {
     // fall through
   }
-  return emptyDeckStore();
+  return emptyModeDeckStore();
 }
 
 export default function Home() {
@@ -95,40 +120,64 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState("すべて");
   const cards = INITIAL_CARDS;
   const raceData = INITIAL_RACE_DATA;
-  const [deck, setDeck] = useState<SupportCard[]>([]);
+  const [modeDecks, setModeDecks] = useState<ModeDeckStore>(emptyModeDeckStore);
   const [selectedRace, setSelectedRace] = useState(INITIAL_RACE);
   const [strategy, setStrategy] = useState("先行");
   const [usageMode, setUsageMode] = useState<UsageMode>("factor");
   const [mobileTab, setMobileTab] = useState<MobileTab>("search");
   const [deckRestored, setDeckRestored] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
-  const [activeSlot, setActiveSlot] = useState(0);
+  const activeSlot = modeDecks[usageMode].active;
+  const deck = useMemo(
+    () => idsToCards(modeDecks[usageMode].slots[activeSlot], cards),
+    [activeSlot, cards, modeDecks, usageMode]
+  );
+  const trainingDeck = useMemo(() => {
+    const trainingStore = modeDecks.training;
+    return idsToCards(
+      trainingStore.slots[trainingStore.active],
+      cards
+    );
+  }, [cards, modeDecks.training]);
 
   // 初回マウント時にlocalStorageから編成を復元する
   useEffect(() => {
-    const store = loadDeckStore();
-    setActiveSlot(store.active);
-    setDeck(idsToCards(store.slots[store.active], INITIAL_CARDS));
+    setModeDecks(loadModeDeckStore());
     setDeckRestored(true);
   }, []);
 
   // 編成が変わるたびに自動保存する(復元前の空編成で上書きしない)
   useEffect(() => {
     if (!deckRestored) return;
-    const store = loadDeckStore();
-    store.active = activeSlot;
-    store.slots[activeSlot] = deck.map((card) => card.id);
-    window.localStorage.setItem(DECKS_STORAGE_KEY, JSON.stringify(store));
+    window.localStorage.setItem(MODE_DECKS_STORAGE_KEY, JSON.stringify(modeDecks));
     setSaveFlash(true);
     const timer = window.setTimeout(() => setSaveFlash(false), 1500);
     return () => window.clearTimeout(timer);
-  }, [deck, activeSlot, deckRestored]);
+  }, [deckRestored, modeDecks]);
+
+  const updateCurrentDeck = (
+    update: (currentDeck: SupportCard[]) => SupportCard[]
+  ) => {
+    setModeDecks((current) => {
+      const store = current[usageMode];
+      const currentDeck = idsToCards(store.slots[store.active], cards);
+      const nextDeck = update(currentDeck).slice(0, 6);
+      const nextStore: DeckStore = {
+        active: store.active,
+        slots: store.slots.map((slot, index) =>
+          index === store.active ? nextDeck.map((card) => card.id) : slot
+        ),
+      };
+      return { ...current, [usageMode]: nextStore };
+    });
+  };
 
   const switchDeckSlot = (slot: number) => {
     if (slot === activeSlot) return;
-    const store = loadDeckStore();
-    setActiveSlot(slot);
-    setDeck(idsToCards(store.slots[slot], INITIAL_CARDS));
+    setModeDecks((current) => ({
+      ...current,
+      [usageMode]: { ...current[usageMode], active: slot },
+    }));
   };
 
   const handleSkillSearch = (skill: string) => {
@@ -167,22 +216,66 @@ export default function Home() {
     return detail;
   }, [effectiveStrategy, raceData, selectedRace]);
 
-  const visibleStrategyDetail = useMemo(() => {
+  const trainingStrategyDetail = useMemo(() => {
     const superRecommended = filterSkillsForUsageMode(
       currentStrategyDetail.super_recommended,
-      usageMode
+      "training"
     );
     const superRecommendedSet = new Set(superRecommended);
     const recommended = filterSkillsForUsageMode(
       currentStrategyDetail.recommended,
-      usageMode
+      "training"
     ).filter((skill) => !superRecommendedSet.has(skill));
 
     return {
       super_recommended: superRecommended,
       recommended,
     };
-  }, [currentStrategyDetail, usageMode]);
+  }, [currentStrategyDetail]);
+
+  const factorStrategyDetail = useMemo(() => {
+    const superRecommended = filterSkillsForUsageMode(
+      currentStrategyDetail.super_recommended,
+      "factor"
+    );
+    const superRecommendedSet = new Set(superRecommended);
+    const recommended = filterSkillsForUsageMode(
+      currentStrategyDetail.recommended,
+      "factor"
+    ).filter((skill) => !superRecommendedSet.has(skill));
+
+    return {
+      super_recommended: superRecommended,
+      recommended,
+    };
+  }, [currentStrategyDetail]);
+
+  const trainingDeckFactorSkills = useMemo(() => {
+    const skills = new Set<string>();
+    trainingDeck.forEach((card) => {
+      getCardSkills(card, "factor").forEach((skill) => skills.add(skill));
+    });
+    return skills;
+  }, [trainingDeck]);
+
+  const parentFactorDetail = useMemo(() => {
+    const superRecommended = factorStrategyDetail.super_recommended.filter(
+      (skill) => !trainingDeckFactorSkills.has(skill)
+    );
+    const superRecommendedSet = new Set(superRecommended);
+    const recommended = factorStrategyDetail.recommended.filter(
+      (skill) =>
+        !trainingDeckFactorSkills.has(skill) && !superRecommendedSet.has(skill)
+    );
+
+    return {
+      super_recommended: superRecommended,
+      recommended,
+    };
+  }, [factorStrategyDetail, trainingDeckFactorSkills]);
+
+  const visibleStrategyDetail =
+    usageMode === "training" ? trainingStrategyDetail : parentFactorDetail;
 
   const allTargetSkills = useMemo(
     () => [
@@ -262,12 +355,12 @@ export default function Home() {
     if (deck.length >= 6 || deck.some((deckCard) => deckCard.id === card.id)) {
       return;
     }
-    setDeck((currentDeck) => [...currentDeck, card]);
+    updateCurrentDeck((currentDeck) => [...currentDeck, card]);
   };
 
   const removeFromDeck = (card?: SupportCard) => {
     if (!card) return;
-    setDeck((currentDeck) =>
+    updateCurrentDeck((currentDeck) =>
       currentDeck.filter((deckCard) => deckCard.id !== card.id)
     );
   };
@@ -296,7 +389,7 @@ export default function Home() {
         {saveFlash ? "保存しました ✓" : "自動保存"}
       </span>
       <button
-        onClick={() => setDeck([])}
+        onClick={() => updateCurrentDeck(() => [])}
         className={cn(
           "material-button-secondary flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-semibold transition",
           compact ? "min-w-[92px] px-3 py-1.5" : "min-w-[64px] px-2.5 py-1.5"
@@ -512,6 +605,25 @@ export default function Home() {
 
   const renderSkillPanel = () => (
     <section className="flex-shrink-0 overflow-hidden rounded-lg border border-border bg-card px-4 py-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          {usageMode === "training"
+            ? "本育成サポカ6枚にないスキルを、親因子候補として引き継げます。"
+            : "本育成サポカにないスキルだけを、親因子で補う候補として表示しています。"}
+        </p>
+        {usageMode === "training" ? (
+          <button
+            type="button"
+            onClick={() => {
+              setUsageMode("factor");
+              setMobileTab("skills");
+            }}
+            className="material-button-primary rounded-md px-3 py-1.5 text-xs font-semibold"
+          >
+            因子周回へ引き継ぐ
+          </button>
+        ) : null}
+      </div>
       <SkillList
         strategyDetail={visibleStrategyDetail}
         deckSkills={deckSkills}
