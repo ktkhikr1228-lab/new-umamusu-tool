@@ -2,14 +2,14 @@
 
 ウマ娘の因子周回向けに、レース条件ごとの有効スキルを見ながらサポートカード編成を組むためのWebツールです。
 
-最終更新: 2026-07-04
+最終更新: 2026-11-08
 
 ## 現在の状態
 
 - 公開先: https://new-umamusu-tool.vercel.app/
 - 主な画面: サポカ検索、目標条件、スキル確認、現在の編成
 - 対象ユーザー: 初心者から中級者を優先
-- 保存機能: Prisma + PostgreSQLで匿名IDごとの編成保存に対応。`DATABASE_URL` 未設定時は表示中心
+- 保存機能: ブラウザのlocalStorageで編成を3スロット保存。別端末との共有には未対応
 - お問い合わせ: Googleフォームへのリンクを設置
 - 補助環境: Raspberry Pi 3B+でスクショ取り込み、Gemini抽出、Discord通知を試験運用中
 
@@ -21,7 +21,7 @@
 - カードタイプで絞り込む
 - 不足スキルを持つカードを優先して並び替える
 - 6枚のサポカ編成を画面上で組む
-- DB設定済み環境では編成を保存・復元する
+- 同じブラウザで編成を保存・復元する
 - 因子周回 / 本育成のモードを切り替える
 
 ## 因子周回モードの扱い
@@ -39,8 +39,8 @@
 | 領域 | 内容 |
 | --- | --- |
 | Frontend | Next.js 16 / React 19 / TypeScript / Tailwind CSS |
-| API | Next.js Route Handlers |
-| Database | Prisma / PostgreSQL。現在は編成保存用。スキル修正管理への拡張を検討中 |
+| API | 公開サイトは静的構成。Piの管理GUIとローカル編集用サーバは別途運用 |
+| Database | Prisma / PostgreSQL。ラズパイの編集用RaceSkillテーブルを管理。公開サイトはDB不要 |
 | Backend | FastAPI。ローカル検証や補助スクリプト用 |
 | Hosting | Vercel |
 | Data | `frontend/src/data/*.json` |
@@ -51,7 +51,7 @@
 ```text
 frontend/
   app/                  Next.js app router
-  app/api/              Vercel上で使うAPI
+  app/api/              API関連コード(公開サイトは静的エクスポート)
   prisma/               Prisma schema
   scripts/              Prisma取り込みやエクスポート補助
   src/components/       UIコンポーネント
@@ -72,7 +72,7 @@ backend/
 フロントだけ確認する場合:
 
 ```powershell
-cd C:\tmp\new-umamusu-tool\frontend
+cd C:\Users\katao\uma-tool-workspace\current\new-umamusu-tool\frontend
 npm install
 npm run dev
 ```
@@ -86,7 +86,7 @@ http://localhost:3000
 FastAPIも使う場合:
 
 ```powershell
-cd C:\tmp\new-umamusu-tool\backend
+cd C:\Users\katao\uma-tool-workspace\current\new-umamusu-tool\backend
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -145,13 +145,15 @@ Cloudflare Pagesの場合:
 スクショ(ホットキーで撮影・転送 → tools/screenshot/ 参照)
   -> Gemini APIで抽出(複数画像/1リクエスト + skill_master自動補正)
   -> npm run skills:import でRaceSkillテーブルへ
-  -> Prisma Studioで要確認行(unknown_skill)を中心に確認
-  -> npm run skills:export -> frontend/src/data/race_data.json
+  -> レビューページで画像と照合し、要確認行を修正・確認済みにする
+  -> 確認済みCSVから公開リクエストを生成
+  -> GitHub Actionsで検証・ビルドしてPR作成
+  -> 人がマージし、Vercelで公開
 ```
 
 ### スクショの撮影・転送(半自動)
 
-`tools/screenshot/` のAutoHotkeyスクリプトを常駐させ、ガイド画面で Ctrl+Alt+1〜4(脚質)を押すと、キャプチャ→ローカル保存→ラズパイinboxへの転送まで自動で行われます。ゲームへの入力は自動化しません。詳細は `tools/screenshot/README.md`。
+`tools/screenshot/` のAutoHotkeyスクリプトを常駐させ、撮影は **F8**、Ctrl+Alt+1〜4は脚質切替、Ctrl+Alt+5は超おすすめ、Ctrl+Alt+6はおすすめへの切替です。F8でキャプチャ→ローカル保存→ラズパイinboxへの転送を行います。イベント名は同じフォルダの `current_event.txt` に設定します(例: `2026-11_LOH`)。ゲーム内のタブとは自動連動しないため、手動で合わせてください。撮影だけではGemini抽出は実行しません。詳細は `tools/screenshot/README.md`。
 
 ### 抽出の改善点
 
@@ -175,7 +177,7 @@ Cloudflare Pagesの場合:
 ローカルで確認する例:
 
 ```powershell
-cd C:\tmp\new-umamusu-tool
+cd C:\Users\katao\uma-tool-workspace\current\new-umamusu-tool
 python backend\tools\check_extracted_skills.py `
   --input-glob "backend\data\guide_import\extracted\*.csv"
 
@@ -203,14 +205,14 @@ python backend\tools\build_race_data.py `
 - 古いスクショの整理
 - Discordへの通知
 - 公式ニュース監視とイベントフォルダ作成の補助
-- GameToraスキルデータの更新監視(gametora_skills_watch.py、15分おきcron)。
-  更新検知でskill_master.jsonを再生成し、追加/削除スキルをDiscord通知
+- GameToraスキルデータの更新監視。PiではJST 12:15・12:45・14:15・15:00に確認する運用へ変更済み。日本語スキルの追加・内容変更を通知し、外国語のみの変更や削除のみでは通知しない
+- GitHub Actionsの定期実行はmainのワークフロー設定に従う。README更新時点ではJST 12:15・15:00・18:00・21:00。Piと同じ時刻への変更は[PR #65](https://github.com/ktkhikr1228-lab/new-umamusu-tool/pull/65)で別途確認する
 - スキル修正管理用PostgreSQL(RaceSkillテーブル)のホスト
 
 接続:
 
 ```powershell
-ssh uma-pi
+ssh katao@uma-pi
 ```
 
 ラズパイ側の主な場所:
@@ -231,11 +233,13 @@ GUIでできること:
 
 - スクショアップロード
 - 競馬場、馬場、距離、脚質を選んで保存
-- 保存済み画像からGemini抽出
+- 保存済み画像の抽出前に対象件数・スキップ件数・APIリクエスト数の見積もりを確認
+- 確認画面からGemini抽出を開始(現在の主モデル: `gemini-3.5-flash-lite`)
+- 同じ画像の再抽出を抑制し、運用ページ `/operations` で処理状態を確認
 - 抽出済みCSV一覧の確認
 - イベント別フォルダの確認
 
-Tailscale経由で、自宅外からも同じGUIへアクセスする想定です。外部へ一般公開はしません。
+Tailscale経由で、自宅外からも同じGUIへアクセスできます。名前解決できない場合は `http://100.87.114.18:8080/` を使います。スマホも同じTailscaleネットワークに接続してください。外部へ一般公開はしません。スマホ向けスキル修正画面と管理GUIの公開ボタンは未接続です。
 
 ## Piからローカルへ同期する流れ
 
@@ -260,8 +264,9 @@ Raspberry Pi extracted CSV
 Gemini抽出CSV
   -> npm run skills:import  (RaceSkillテーブルへ取り込み)
   -> レビューページで画像と見比べて修正(下記)
-  -> 一括ready化 -> npm run skills:export -- --merge (race_data.jsonへ)
-  -> コミット -> 自動デプロイ
+  -> 確認した行をready化
+  -> 確認済みCSV -> 公開リクエスト -> Actions検証・ビルド -> PR
+  -> 人がマージ -> Vercelで公開
 ```
 
 ### レビューページでの確認・修正(推奨)
@@ -281,7 +286,7 @@ node scripts/review-server.mjs
 
 review_nige.htmlをブラウザで開き、赤帯(unknown_skill)を画像と見比べて名前修正 or「除外」チェック →「DBに適用」ボタン。修正先が既に存在する場合はサーバが自動で除外(rejected)に切り替えるので、重複エラーは起きません。
 
-確認が済んだら一括ready化:
+対象レースのdraft行をすべて画像と照合した場合だけ、一括ready化します。未確認行が残っている場合は実行しません:
 
 ```powershell
 node scripts/db-query.mjs 'update RaceSkill set status = ''ready'' where race = ''中山 芝 3600m'' and status = ''draft'''
@@ -327,7 +332,7 @@ npm run skills:export
 - `skills:import` は既存行(同じ race / strategy / tier / skill)をスキップするので、Studioでの手修正は再取り込みで消えない
 - `skills:export` は既定で `status = ready` の行のみを書き出し、JSONを丸ごと作り直す。`--include-draft` でdraftも含む、`--merge` で既存JSONへ追記、`--dry-run` で件数確認のみ
 - statusの値: `draft`(未確認) / `ready`(公開OK) / `rejected`(誤認識など除外)
-- 編成保存と同じDBを使う場合は、Vercel側の `DATABASE_URL` と分けて考える(編集用DBはラズパイ、公開用はJSONなのでVercelからDB参照は不要)
+- DBはラズパイの編集用です。編成保存はlocalStorage、公開用はJSONなのでVercelからDB参照は不要
 
 ## 変更しやすくするためのメモ
 
@@ -359,13 +364,16 @@ npm run skills:export
 ## 今後やりたいこと
 
 - スマホ表示の調整
-- レース条件と脚質データの拡充(中山 芝 3600m 対応中)
+- レース条件と脚質データの拡充(2026年11月LOH: 京都 芝 3000mのスクショ収集中。公開済みではない)
 - 東京 芝 2400m 旧データのtier重複の整理(再抽出 or 手修正)
-- Cloudflare Pagesへの移行(静的化は完了、接続待ち)
+- 公開先はVercelを継続利用。Cloudflare Pages等への移行は必要になった場合に検討
 - 独自ドメインの取得と広告掲載の検討(収益はサーバ代の足し程度)
 - ラズパイGUIで画像管理をしやすくする
 - 更新完了通知や利用状況通知をDiscordへ送る
 - お問い合わせ内容をもとにUI/UXを改善
 
-済み(2026-07-04): 超/おすすめの見出しベース抽出、Prisma(レビューページ)での確認・修正、
+既存の実装: 超/おすすめの見出しベース抽出、Prisma(レビューページ)での確認・修正、
 スクショのホットキー半自動化、GameToraスキル更新監視、サイト完全静的化、編成3スロット化
+
+
+公開データはイベント別ではなく競馬場・馬場・距離・脚質ごとに保持します。同条件の別イベントを追加すると既存データと統合されるため、季節スキルの全面入れ替えには別途レビューが必要です。
