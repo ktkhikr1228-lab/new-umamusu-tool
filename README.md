@@ -197,8 +197,8 @@ python backend\tools\build_race_data.py `
 - 古いスクショの整理
 - Discordへの通知
 - 公式ニュース監視とイベントフォルダ作成の補助
-- GameToraスキルデータの更新監視(gametora_skills_watch.py、15分おきcron)。
-  更新検知でskill_master.jsonを再生成し、追加/削除スキルをDiscord通知
+- GameToraスキルデータの更新監視(gametora_skills_watch.py、日本時間12:15・12:45・14:15・15:00の1日4回)。
+  更新検知でskill_master.jsonを再生成し、日本語名・効果などの関連差分をDiscord通知
 - スキル修正管理用PostgreSQL(RaceSkillテーブル)のホスト
 
 接続:
