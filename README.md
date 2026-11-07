@@ -100,6 +100,12 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - 旧形式 `uma-tool-deck-v1` は初回アクセス時に編成1へ自動移行
 - 保存はそのブラウザ限定。別端末との共有はできない(必要になったら再検討)
 
+## 確認済みスキル・レース情報の公開PR
+
+確認済みCSVから公開リクエストを作り、GitHub Actionsで検証・ビルドしたうえでPRを作成できます。公開サイトは既存のVercelを継続利用します。自動マージは行いません。
+
+手順と制約は [確認済みレーススキルの公開](docs/reviewed-race-publication.md) を参照してください。管理サイトの公開ボタンとの接続は今後の作業です。
+
 ## ホスティング / デプロイ
 
 `frontend` は `output: "export"` の静的エクスポート構成です。`npm run build` で `out/` に静的サイトが生成され、Cloudflare Pages / Vercel / GitHub Pages などにそのまま置けます。
