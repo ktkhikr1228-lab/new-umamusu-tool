@@ -67,3 +67,18 @@ Raspberry PiとPostgreSQLは撮影データの受け取り・抽出・編集な�
 | [`.github/workflows/`](.github/workflows/) | データ更新・検証・公開PRの自動化 |
 
 お問い合わせは公開サイト内のフォームからお願いします。
+
+## Raspberry Piの運用画面
+
+同じTailscaleネットワークに接続したPC・スマホから `http://uma-pi:8080/` にアクセスします。名前解決できない場合は `http://100.87.114.18:8080/` を使います。管理画面は一般公開しません。
+
+- 抽出前に対象画像・スキップ件数・APIリクエスト数の見積もりを確認し、確認画面から抽出を開始します。撮影・転送だけではGeminiを呼び出しません。
+- 同じ画像の再抽出を抑制し、`/operations` で処理状態を確認できます。現在の抽出モデルは `gemini-3.5-flash-lite` です。
+- スマホ向けスキル修正画面、管理画面の公開ボタン、撮影設定の自動同期は未接続です。
+- Piの監視時刻は日本時間12:15・12:45・14:15・15:00です。GitHub Actionsの時刻は上記ワークフロー設定と異なります。時刻変更は[PR #65](https://github.com/ktkhikr1228-lab/new-umamusu-tool/pull/65)で別途確認します。
+
+Windowsの現在の作業場所は `C:\Users\katao\uma-tool-workspace\current\new-umamusu-tool` です。撮影イベント名は `tools/screenshot/current_event.txt` に設定します。Ctrl+Alt+1〜4で脚質、Ctrl+Alt+5・6で超おすすめ・おすすめを選び、ゲーム内のタブも手動で合わせてください。
+
+画像はGitHubへコミットせず、PCの `%USERPROFILE%\uma-shots` とPiの `/home/katao/uma-guide-data/screenshots` で管理します。抽出CSVは `/home/katao/uma-guide-data/extracted`、運用スクリプトは `/home/katao/uma-tool-automation` に保存しています。
+
+2026年11月LOH（京都・芝3000m）は画像収集中です。確認済みデータの公開PRは自動マージしません。同じコースの別イベントは既存データに統合されるため、季節スキルの全面入れ替えには別途レビューが必要です。
