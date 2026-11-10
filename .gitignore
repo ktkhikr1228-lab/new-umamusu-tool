@@ -10,3 +10,6 @@ frontend/.next/
 
 # ラズパイからのローカルコピー(APIキー・webhook含むためコミット禁止)
 _pi/
+
+# guide_app のローカル設定
+tools/guide_app/config.toml

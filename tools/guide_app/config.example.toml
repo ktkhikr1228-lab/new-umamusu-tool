@@ -1,0 +1,14 @@
+# guide_app の設定例。config.toml にコピーして使う(config.toml はコミットしない)。
+# 書かなかった項目は既定値になる。
+
+# 撮影・抽出データの置き場所(ラズパイ)
+data_root = "/home/katao/uma-guide-data"
+# extracted_dir = "/home/katao/uma-guide-data/extracted"
+# screenshots_dir = "/home/katao/uma-guide-data/screenshots"
+
+# 確認作業のデータ(SQLite)。ファイルをコピーすればバックアップになる
+# db_path = "/home/katao/uma-guide-data/guide_app/guide.sqlite3"
+
+# 画面の待ち受け(8080は既存のアップロード画面が使用中)
+host = "0.0.0.0"
+port = 8090
