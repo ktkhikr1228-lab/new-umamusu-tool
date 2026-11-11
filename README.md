@@ -48,12 +48,13 @@ npm run dev
 ### おすすめスキル：ゲーム内のトレーナーガイドから確認
 
 1. Windowsの撮影ツールで脚質・区分を設定し、**F8** で撮影します。設定に応じて画像をRaspberry Piへ転送します。
-2. Geminiでスキル名を抽出し、元画像と照合して誤読・区分・重複を確認します。抽出直後のデータは未確認です。
-3. 確認済みCSVから公開依頼を作成します。GitHub Actionsがデータを再検証してPRを作成し、人が差分を確認してマージすると、Vercelのデプロイで反映されます。
+2. Raspberry Piのアップロード画面(`http://uma-pi:8080/`)でGeminiによる抽出を実行します。抽出直後のデータは未確認です。
+3. Raspberry Pi常駐の**ガイド確認アプリ**(`http://uma-pi:8090/`)が抽出CSVを自動で取り込みます。スクショと並べて表示し、マスタにない名前・◎付き・サイトと区分が違う行などだけを確認すれば済みます。
+4. 公開画面の「公開を依頼する」で、OKにした行のうちサイトにない・区分が違うものだけを依頼します。GitHub Actionsがデータを再検証してPRを作成し、人が差分を確認してマージすると、Vercelのデプロイで反映されます。
 
-詳細: [撮影・転送](tools/screenshot/README.md) ／ [抽出データの管理](backend/data/guide_import/README.md) ／ [確認済みデータの公開手順](docs/reviewed-race-publication.md)
+詳細: [撮影・転送](tools/screenshot/README.md) ／ [ガイド確認アプリ](tools/guide_app/README.md) ／ [公開依頼の仕組み](docs/reviewed-race-publication.md)
 
-Raspberry PiとPostgreSQLは撮影データの受け取り・抽出・編集などの運用に使います。DBへの取り込みや修正だけでは、公開サイトは更新されません。公開版のおすすめスキルは、イベント月別ではなく**コース・脚質別**の `race_data.json` にまとまっています。
+確認アプリの取り込みや修正だけでは、公開サイトは更新されません。公開依頼のPRをマージした時点で反映されます。公開版のおすすめスキルは、イベント月別ではなく**コース・脚質別**の `race_data.json` にまとまっています。
 
 ## リポジトリ構成
 
@@ -61,7 +62,8 @@ Raspberry PiとPostgreSQLは撮影データの受け取り・抽出・編集な�
 | --- | --- |
 | [`frontend/app/`](frontend/app/)・[`frontend/src/`](frontend/src/) | Next.js・React・TypeScript・Tailwind CSSによる公開画面と編成ロジック |
 | [`frontend/src/data/`](frontend/src/data/) | 公開画面が参照するサポカ・レース・スキルのJSON |
-| [`frontend/scripts/`](frontend/scripts/)・[`frontend/prisma/`](frontend/prisma/) | 運用者向けの編集DB操作 |
+| [`tools/guide_app/`](tools/guide_app/) | おすすめスキルの確認・公開アプリ(Raspberry Pi常駐) |
+| [`frontend/scripts/`](frontend/scripts/)・[`frontend/prisma/`](frontend/prisma/) | 旧手順の編集DB操作(Prisma)。新しい作業には使いません |
 | [`backend/tools/`](backend/tools/)・[`backend/tests/`](backend/tests/) | データ取得・抽出・公開用スクリプトとテスト |
 | [`tools/screenshot/`](tools/screenshot/) | Windowsでの撮影・転送ツール |
 | [`.github/workflows/`](.github/workflows/) | データ更新・検証・公開PRの自動化 |
@@ -74,7 +76,7 @@ Raspberry PiとPostgreSQLは撮影データの受け取り・抽出・編集な�
 
 - 抽出前に対象画像・スキップ件数・APIリクエスト数の見積もりを確認し、確認画面から抽出を開始します。撮影・転送だけではGeminiを呼び出しません。
 - 同じ画像の再抽出を抑制し、`/operations` で処理状態を確認できます。現在の抽出モデルは `gemini-3.5-flash-lite` です。
-- スマホ向けスキル修正画面、管理画面の公開ボタン、撮影設定の自動同期は未接続です。
+- 抽出結果の確認と公開依頼は、同じRaspberry Piのガイド確認アプリ(`http://uma-pi:8090/`)で行います。撮影設定の自動同期は未接続です。
 - Piの監視時刻は日本時間12:15・12:45・14:15・15:00です。GitHub Actionsの時刻は上記ワークフロー設定と異なります。時刻変更は[PR #65](https://github.com/ktkhikr1228-lab/new-umamusu-tool/pull/65)で別途確認します。
 
 Windowsの現在の作業場所は `C:\Users\katao\uma-tool-workspace\current\new-umamusu-tool` です。撮影イベント名は `tools/screenshot/current_event.txt` に設定します。Ctrl+Alt+1〜4で脚質、Ctrl+Alt+5・6で超おすすめ・おすすめを選び、ゲーム内のタブも手動で合わせてください。

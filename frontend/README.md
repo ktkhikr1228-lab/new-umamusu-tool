@@ -8,7 +8,7 @@
 - サポカ検索、レース条件選択、スキル表示、編成表示(3スロット)を担当
 - データはビルド時に `src/data/*.json` から焼き込み。サーバ処理なし
 - 編成は3スロットをlocalStorageに自動保存(サーバ・DB不要)
-- Prisma(schema/scripts)はスキルデータ編集用。本番サイトからは使わない
+- Prisma(schema/scripts)は旧手順のスキルデータ編集用。本番サイトからは使わず、新しい作業にも使わない(おすすめスキルの確認・公開は `tools/guide_app/`)
 
 ## 起動
 
@@ -32,20 +32,15 @@ npm run dev -- --port 3001
 ```powershell
 npm run lint
 npm run build        # out/ に静的サイトを出力
-npm run prisma:studio    # 編集用DB(ラズパイ)の確認・修正
-npm run skills:import    # 抽出CSV -> RaceSkillテーブル
-npm run skills:export    # RaceSkillテーブル -> race_data.json
 ```
+
+旧手順(使わない): `npm run prisma:studio` / `skills:import` / `skills:export`
 
 ## 環境変数
 
 サイト本体は環境変数なしで動きます。
 
-スキルデータ編集(skills:*、prisma:*)を使うときだけ、編集用DBの接続先を設定します。
-
-```text
-DATABASE_URL=postgresql://uma:PASSWORD@uma-pi:5432/uma_tool
-```
+旧手順(skills:*、prisma:*)だけが `DATABASE_URL` を使います。
 
 ## デプロイ
 
@@ -58,8 +53,6 @@ Cloudflare Pagesの場合: ビルドコマンド `npm run build`、出力ディ�
 | 目的 | ファイル |
 | --- | --- |
 | メイン画面 | `app/page.tsx` |
-| Prisma設定(編集用DB) | `prisma/schema.prisma` |
-| スキルDB取り込み/書き出し | `scripts/import-race-skills.mjs`, `scripts/export-race-data.mjs` |
 | 全体スタイル | `app/globals.css` |
 | サポカ検索 | `src/components/card-search-panel.tsx` |
 | 編成スロット | `src/components/deck-slot.tsx` |

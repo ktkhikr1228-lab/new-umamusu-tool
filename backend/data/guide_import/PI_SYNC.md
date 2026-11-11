@@ -1,5 +1,8 @@
 # Raspberry Pi CSV sync
 
+> **旧手順です。** おすすめスキルの確認・公開は、Raspberry Pi常駐のガイド確認アプリ(`tools/guide_app/README.md`)で行います。
+> この文書は過去の作業記録として残しています。
+
 ラズパイで抽出したトレーナーガイドCSVを、PC側のリポジトリへ取り込んで `race_data.json` まで更新する手順です。
 
 ## 前提
