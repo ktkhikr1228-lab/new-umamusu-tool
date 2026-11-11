@@ -10,6 +10,7 @@ from guide_app import db  # noqa: E402
 from guide_app.config import load_config  # noqa: E402
 from guide_app.importer import import_all, normalize_strategy, normalize_tier  # noqa: E402
 from guide_app.skill_master import SkillMaster  # noqa: E402
+from guide_app import review  # noqa: E402
 
 HEADER = "race,strategy,tier,skill,source_file,status,memo\n"
 MASTER = SkillMaster(["左回り○", "左回り◎", "末脚", "コーナー回復○"])
@@ -117,6 +118,90 @@ class GuideAppHelpersTests(unittest.TestCase):
             self.assertEqual(cfg.extracted_dir, Path(tmp).resolve() / "data" / "extracted")
             self.assertEqual(cfg.port, 9000)
             self.assertTrue(cfg.skill_master_path.name == "skill_master.json")
+
+
+class GuideAppReviewTests(unittest.TestCase):
+    RACE, STRAT, EV = "東京 芝 2400m", "逃げ", "ev"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "extracted"
+        self.conn = db.connect(Path(self.tmp.name) / "guide.sqlite3")
+        write(self.root / self.EV / "a.csv", HEADER + "\n".join([
+            f"{self.RACE},逃げ,super_recommended,末脚,1.png,,",
+            f"{self.RACE},逃げ,super_recommended,謎スキル,1.png,,",
+            f"{self.RACE},逃げ,super_recommended,左回り◎,1.png,,",
+            f"{self.RACE},逃げ,super_recommended,左回り○,1.png,,",
+            f"{self.RACE},逃げ,recommended,コーナー回復○,2.png,,",
+            f"{self.RACE},逃げ,recommended,末脚,2.png,,",
+        ]) + "\n")
+        import_all(self.conn, self.root, MASTER)
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def group(self):
+        return review.group(self.conn, MASTER, self.EV, self.RACE, self.STRAT)
+
+    def rows(self):
+        return {(r["source_file"], r["skill"], r["tier"]): r for im in self.group()["images"] for r in im["rows"]}
+
+    def test_attention_reasons(self):
+        rows = self.rows()
+        self.assertIn("スキルマスタにない名前", rows[("1.png", "謎スキル", "super_recommended")]["attention"])
+        self.assertIn("同じ画像に○と◎の両方がある", rows[("1.png", "左回り○", "super_recommended")]["attention"])
+        self.assertIn("◎は○との読み違いが多い", rows[("1.png", "左回り◎", "super_recommended")]["attention"])
+        self.assertIn("超おすすめ・おすすめの両方にある", rows[("2.png", "末脚", "recommended")]["attention"])
+        self.assertEqual(rows[("2.png", "コーナー回復○", "recommended")]["attention"], [])
+
+    def test_review_image_approves_only_matched_rows(self):
+        result = review.review_image(self.conn, MASTER, self.EV, "2.png", self.RACE, self.STRAT)
+        self.assertEqual(result, {"approved": 1, "pending": 1})
+        rows = self.rows()
+        self.assertEqual(rows[("2.png", "コーナー回復○", "recommended")]["status"], "ready")
+        self.assertEqual(rows[("2.png", "末脚", "recommended")]["status"], "draft")
+        image = next(i for i in self.group()["images"] if i["file"] == "2.png")
+        self.assertIsNotNone(image["reviewed_at"])
+
+    def test_update_row_and_validation(self):
+        row = self.rows()[("1.png", "謎スキル", "super_recommended")]
+        updated = review.update_row(self.conn, row["id"], {"skill": "左回り○", "status": "ready"})
+        self.assertEqual((updated["skill"], updated["extracted_skill"], updated["status"]), ("左回り○", "謎スキル", "ready"))
+        for bad in ({"status": "bogus"}, {"tier": "x"}, {"skill": " "}, {"event": "x"}, {}):
+            with self.assertRaises(review.ReviewError):
+                review.update_row(self.conn, row["id"], bad)
+        with self.assertRaises(review.ReviewError):
+            review.update_row(self.conn, 99999, {"status": "ready"})
+
+    def test_bulk_tier_change_marks_duplicates_rejected(self):
+        result = review.set_images_tier(self.conn, self.EV, self.RACE, self.STRAT, ["2.png"], "super_recommended")
+        self.assertEqual(result, {"changed": 1, "duplicates": 1})
+        rows = self.rows()
+        self.assertEqual(rows[("2.png", "コーナー回復○", "super_recommended")]["status"], "draft")
+        dup = rows[("2.png", "末脚", "recommended")]  # 1.pngに超おすすめの末脚があるので区分は変えず却下
+        self.assertEqual((dup["status"], dup["memo"]), ("rejected", "区分変更時に重複"))
+        with self.assertRaises(review.ReviewError):
+            review.set_images_tier(self.conn, self.EV, self.RACE, self.STRAT, [], "recommended")
+
+    def test_row_tier_conflict_is_explained(self):
+        row = self.rows()[("2.png", "末脚", "recommended")]
+        with self.assertRaises(review.ReviewError):
+            review.update_row(self.conn, row["id"], {"tier": "super_recommended"})
+
+    def test_overview_counts_reviewed_images(self):
+        review.review_image(self.conn, MASTER, self.EV, "2.png", self.RACE, self.STRAT)
+        ev = review.overview(self.conn)[0]
+        self.assertEqual((ev["images"], ev["images_reviewed"], ev["ready"]), (2, 1, 1))
+
+    def test_image_index_prefers_event_folder(self):
+        shots = Path(self.tmp.name) / "shots"
+        write(shots / "other" / "x.png", "a")
+        write(shots / "inbox" / "ev" / "1_nige" / "x.png", "b")
+        index = review.ImageIndex(shots)
+        self.assertEqual(index.find("ev", "x.png").read_text(), "b")
+        self.assertEqual(index.find("ev", "C:\\uma\\x.png").read_text(), "b")
+        self.assertIsNone(index.find("ev", "none.png"))
 
 
 if __name__ == "__main__":

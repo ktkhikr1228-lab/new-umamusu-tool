@@ -21,6 +21,7 @@ class Config:
     skill_master_path: Path
     host: str = "0.0.0.0"
     port: int = 8090
+    import_interval: int = 300  # 抽出CSVを自動で取り込む間隔(秒)。0で無効
 
 
 def _path(value: object, base: Path) -> Path:
@@ -52,4 +53,5 @@ def load_config(path: Path | None = None, overrides: dict | None = None) -> Conf
         ),
         host=str(raw.get("host", "0.0.0.0")),
         port=int(raw.get("port", 8090)),
+        import_interval=int(raw.get("import_interval", 300)),
     )

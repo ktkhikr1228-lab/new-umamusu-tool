@@ -12,3 +12,6 @@ data_root = "/home/katao/uma-guide-data"
 # 画面の待ち受け(8080は既存のアップロード画面が使用中)
 host = "0.0.0.0"
 port = 8090
+
+# 新しい抽出CSVを自動で取り込む間隔(秒)。0で無効
+import_interval = 300

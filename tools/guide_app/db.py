@@ -39,6 +39,15 @@ MIGRATIONS = [
         imported_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
     """,
+    # v2: 画像ごとの確認状態
+    """
+    CREATE TABLE images (
+        event       TEXT NOT NULL,
+        source_file TEXT NOT NULL,
+        reviewed_at TEXT,
+        PRIMARY KEY (event, source_file)
+    );
+    """,
 ]
 
 
