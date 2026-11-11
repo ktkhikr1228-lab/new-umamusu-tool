@@ -55,6 +55,16 @@ MIGRATIONS = [
         hidden INTEGER NOT NULL DEFAULT 0
     );
     """,
+    # v4: 公開依頼の記録
+    """
+    CREATE TABLE publish_log (
+        id      INTEGER PRIMARY KEY,
+        event   TEXT NOT NULL,
+        rows    INTEGER NOT NULL,
+        result  TEXT NOT NULL,      -- 送信結果(JSON)
+        sent_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    """,
 ]
 
 

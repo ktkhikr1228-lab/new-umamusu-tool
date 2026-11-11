@@ -15,3 +15,6 @@ port = 8090
 
 # 新しい抽出CSVを自動で取り込む間隔(秒)。0で無効
 import_interval = 300
+
+# 公開依頼(GitHub Actions起動)に使うトークン。既存の公開スクリプトと同じファイル
+# token_file = "~/.config/uma-tool/github_token"

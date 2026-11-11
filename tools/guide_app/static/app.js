@@ -84,8 +84,11 @@ function hiddenList(list) {
 
 function eventCard(ev) {
   const pct = (n) => (ev.total ? (n / ev.total) * 100 : 0).toFixed(1) + "%";
-  const first = ev.races[0] && ev.races[0].strategies.find((s) => s.draft > 0);
-  const next = first ? reviewLink(ev.event, ev.races[0].race, first.strategy) : null;
+  let next = null;
+  for (const race of ev.races) {
+    const s = race.strategies.find((x) => x.todo > 0);
+    if (s) { next = reviewLink(ev.event, race.race, s.strategy); break; }
+  }
   return `
   <div class="card">
     <div class="evhead">
@@ -93,19 +96,20 @@ function eventCard(ev) {
         <h2>${esc(ev.event)}</h2>
         <div class="muted small">${ev.races.map((r) => esc(r.race)).join("・")} ・ 画像 ${ev.images}枚(確認済み ${ev.images_reviewed})・ ${ev.total}行</div>
       </div>
-      ${next ? `<a class="btn primary" href="${next}">続きを確認する</a>` : `<span class="chip ok">未確認なし</span>`}
+      ${next ? `<a class="btn primary" href="${next}">続きを確認する</a>` : `<span class="chip ok">確認が必要な行なし</span>`}
       <button class="btn sm" data-act="event-hidden" data-event="${esc(ev.event)}" data-v="1" title="テスト用などのイベントを隠す(データは消えません)">非表示</button>
     </div>
     <div class="bar"><i style="width:${pct(ev.ready)};background:var(--ok)"></i><i style="width:${pct(ev.rejected)};background:var(--ng)"></i></div>
-    <div class="chips"><span class="chip">未確認 ${ev.draft}</span><span class="chip ok">OK ${ev.ready}</span><span class="chip">却下 ${ev.rejected}</span></div>
+    <div class="chips"><span class="chip ${ev.todo ? "warn" : ""}">要確認 ${ev.todo}</span><span class="chip">未確認(うちサイトに公開済み ${ev.draft - ev.todo})</span>
+      <span class="chip ok">OK ${ev.ready}</span><span class="chip">却下 ${ev.rejected}</span></div>
     <table class="grid">
-      <tr><th>コース</th><th>脚質</th><th class="n">画像(確認済み)</th><th class="n">未確認</th><th class="n">OK</th><th class="n">却下</th></tr>
+      <tr><th>コース</th><th>脚質</th><th class="n">画像(確認済み)</th><th class="n">要確認</th><th class="n">未確認</th><th class="n">OK</th><th class="n">却下</th></tr>
       ${ev.races.map((race) => race.strategies.map((s) => `
         <tr>
           <td>${esc(race.race)}</td>
           <td><a href="${reviewLink(ev.event, race.race, s.strategy)}">${esc(s.strategy)}</a></td>
           <td class="n">${s.images}(${s.images_reviewed})</td>
-          <td class="n">${s.draft}</td><td class="n">${s.ready}</td><td class="n">${s.rejected}</td>
+          <td class="n"><strong>${s.todo}</strong></td><td class="n">${s.draft}</td><td class="n">${s.ready}</td><td class="n">${s.rejected}</td>
         </tr>`).join("")).join("")}
     </table>
   </div>`;
@@ -141,7 +145,9 @@ async function loadGroup(keepFile) {
 }
 
 const isMain = (r) => !r.known || r.attention.length > 0;
-const needsWork = (im) => im.rows.some((r) => isMain(r) && r.status === "draft") || !im.reviewed_at;
+// サイトに同じ区分で出ている行は見直さなくてよい
+const needsWork = (im) => im.rows.some((r) => isMain(r) && r.status === "draft")
+  || (!im.reviewed_at && im.rows.some((r) => r.status === "draft" && r.published !== "same"));
 
 function visibleImages() {
   const all = state.group ? state.group.images : [];
@@ -208,6 +214,7 @@ function tierSelect(act, id, value, allowMixed = false) {
 function imagePanel(im) {
   const main = im.rows.filter(isMain), matched = im.rows.filter((r) => !isMain(r));
   const pendingMain = main.filter((r) => r.status === "draft").length;
+  const published = matched.filter((r) => r.published === "same").length;
   return `
     <div class="imgtier">この画像の区分 ${tierSelect("img-tier", null, im.tier, true)}
       <span class="muted small">撮影時の区分切り替え忘れを直すとき用</span></div>
@@ -217,12 +224,12 @@ function imagePanel(im) {
     </div>
     ${matched.length ? `
     <details class="matched" ${recall("guide.openMatched") === "1" ? "open" : ""} data-act="toggle-matched">
-      <summary>マスタと合致 ${matched.length}件(「この画像OK」でまとめてOK・開くと区分の変更や除外ができます)</summary>
+      <summary>マスタと合致 ${matched.length}件${published ? `(うちサイトに公開済み ${published}件)` : ""}・「この画像OK」でまとめてOK・開くと区分の変更や除外ができます</summary>
       ${matched.map((r) => `
       <div class="mrow ${r.status}">
         ${tierSelect("row-tier", r.id, r.tier)}
         <span class="nm">${esc(r.skill)}${r.skill !== r.extracted_skill ? ` <span class="small muted">(読み取り: ${esc(r.extracted_skill)})</span>` : ""}</span>
-        <span class="small muted">${r.status === "ready" ? "OK" : r.status === "rejected" ? "除外" : ""}</span>
+        <span class="small muted">${r.published === "same" ? '<span class="chip ok">公開済み</span> ' : r.published === "new" ? '<span class="chip">新規</span> ' : ""}${r.status === "ready" ? "OK" : r.status === "rejected" ? "除外" : ""}</span>
         <button class="btn sm" data-act="row-status" data-id="${r.id}" data-v="${r.status === "rejected" ? "draft" : "rejected"}">${r.status === "rejected" ? "戻す" : "除外"}</button>
       </div>`).join("")}
     </details>` : ""}
@@ -315,18 +322,68 @@ function move(delta) {
   window.scrollTo(0, 0);
 }
 
-// ---------- 公開(ステップ3で作る) ----------
+// ---------- 公開 ----------
 async function showPublish() {
-  const { events } = await api("/api/overview");
+  const { plans, history, published } = await api("/api/publish");
+  const src = published.loaded_at
+    ? `サイトの内容: ${esc(published.source)}(${esc(published.loaded_at)} 取得・${published.skills}件)`
+    : "サイトの内容をまだ読み込めていません";
   $app.innerHTML = `
+    <div class="card small muted">${src}${published.error ? `<div style="color:var(--warn)">${esc(published.error)}</div>` : ""}
+      <button class="btn sm" data-act="published-refresh" style="margin-left:8px">サイトの最新を読み込む</button>
+      <div style="margin-top:6px">公開は「OKにした行のうち、サイトにない・区分が違うもの」だけを依頼します。サイトにある他のスキルは消しません。
+      依頼するとGitHub Actionsが検証してPRを作ります。サイトに出るのはPRをマージした後です(自動マージはしません)。</div>
+    </div>
+    ${plans.map(planCard).join("") || `<div class="card">公開できるイベントがありません</div>`}
+    <div class="card"><h2>これまでの依頼</h2>
+      ${history.length ? `<table class="grid"><tr><th>日時</th><th>イベント</th><th class="n">行数</th><th>結果</th></tr>
+        ${history.map((h) => `<tr><td>${esc(h.sent_at)}</td><td>${esc(h.event)}</td><td class="n">${h.rows}</td>
+          <td>${h.result.error ? `<span style="color:var(--warn)">失敗: ${esc(h.result.error)}</span>`
+            : `依頼済み ・ <a href="${esc(h.result.pr_url)}" target="_blank" rel="noopener">PRを見る</a> ・ <a href="${esc(h.result.actions_url)}" target="_blank" rel="noopener">Actions</a>`}</td></tr>`).join("")}
+      </table>` : `<p class="muted small">まだありません</p>`}
+    </div>`;
+}
+
+function planCard(p) {
+  const n = p.added.length + p.moved.length;
+  const can = n > 0 && !p.blocked.length;
+  const list = (rows, extra) => rows.map((r) => `<tr><td>${esc(r.race)}</td><td>${esc(r.strategy)}</td><td class="${r.tier === "super_recommended" ? "tier-s" : ""}">${TIERS[r.tier]}</td><td>${esc(r.skill)}</td><td class="small muted">${extra(r)}</td></tr>`).join("");
+  return `
   <div class="card">
-    <h2>公開</h2>
-    <p class="muted">公開ボタンは次の段階で作ります。今はOKにした行の件数だけ表示しています。</p>
-    <table class="grid">
-      <tr><th>イベント</th><th class="n">OK</th><th class="n">未確認</th><th class="n">未確認の画像</th></tr>
-      ${events.map((e) => `<tr><td>${esc(e.event)}</td><td class="n">${e.ready}</td><td class="n">${e.draft}</td><td class="n">${e.images - e.images_reviewed}</td></tr>`).join("")}
-    </table>
+    <div class="evhead">
+      <div><h2>${esc(p.event)}</h2>
+        <div class="chips">
+          <span class="chip ok">追加 ${p.added.length}</span><span class="chip ok">区分変更 ${p.moved.length}</span>
+          <span class="chip">公開済み(変更なし) ${p.unchanged}</span>
+          ${p.requested ? `<span class="chip">依頼済み・マージ待ち ${p.requested}</span>` : ""}
+          <span class="chip">未確認(含めない) ${p.draft}</span>
+          ${p.blocked.length ? `<span class="chip warn">公開できない ${p.blocked.length}</span>` : ""}
+        </div></div>
+      <button class="btn primary" data-act="publish" data-event="${esc(p.event)}" ${can ? "" : "disabled"}>公開を依頼する(${n}行)</button>
+    </div>
+    ${p.blocked.length ? `<div class="small" style="color:var(--warn);margin-top:8px">次の行を確認画面で直すまで公開できません:
+      <table class="grid">${list(p.blocked, (r) => esc(r.reason))}</table></div>` : ""}
+    ${n ? `<details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">依頼する内容を見る</summary>
+      <table class="grid"><tr><th>コース</th><th>脚質</th><th>区分</th><th>スキル</th><th></th></tr>
+        ${list(p.added, () => "追加")}${list(p.moved, (r) => `${TIERS[r.current_tier]} から変更`)}</table></details>` : ""}
+    ${p.requested ? `<div class="small muted" style="margin-top:8px">PRを閉じてやり直したいときは
+      <button class="btn sm" data-act="publish-reset" data-event="${esc(p.event)}">依頼済みを取り消す</button></div>` : ""}
   </div>`;
+}
+
+async function publishEvent(event) {
+  try {
+    const dry = await api("/api/publish", { event, dry_run: true });
+    const msg = `${event} の公開を依頼します。\n\n追加 ${dry.added}行 / 区分変更 ${dry.moved}行` +
+      (dry.requests > 1 ? `\n(量が多いので${dry.requests}回に分けて送り、同じPRにまとまります)` : "") +
+      "\n\nGitHub Actionsが検証してPRを作ります。サイトへの反映はPRのマージ後です。よろしいですか?";
+    if (!confirm(msg)) return;
+    const r = await api("/api/publish", { event });
+    toast(`依頼しました(${r.rows}行)。数分でPRができます`);
+    showPublish();
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 // ---------- イベント ----------
@@ -336,6 +393,13 @@ document.addEventListener("click", (ev) => {
   const { act, v, id } = el.dataset;
   if (act === "import-now") {
     api("/api/import", {}).then((r) => { toast(`取り込み: 追加 ${r.added}行`); route(); }).catch((e) => toast(e.message, true));
+  } else if (act === "publish") {
+    publishEvent(el.dataset.event);
+  } else if (act === "publish-reset") {
+    if (confirm("依頼済みの印を取り消して、もう一度依頼できるようにします。PRはGitHub側で閉じてください。よろしいですか?"))
+      api("/api/publish-reset", { event: el.dataset.event }).then(() => showPublish()).catch((e) => toast(e.message, true));
+  } else if (act === "published-refresh") {
+    api("/api/published-refresh", {}).then((r) => { toast(r.error || "サイトの最新を読み込みました"); route(); }).catch((e) => toast(e.message, true));
   } else if (act === "event-hidden") {
     api("/api/event-hidden", { event: el.dataset.event, hidden: v === "1" })
       .then(() => { toast(v === "1" ? "非表示にしました(一番下から戻せます)" : "表示に戻しました"); showHome(); })

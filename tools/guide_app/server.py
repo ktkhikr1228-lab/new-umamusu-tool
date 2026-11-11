@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import db, review
+from . import db, publish, review
 from .config import Config
 from .importer import import_all
 from .skill_master import SkillMaster
@@ -35,7 +35,9 @@ class App:
         self.master = SkillMaster.load(config.skill_master_path)
         self.images = review.ImageIndex(config.screenshots_dir)
         self.import_lock = threading.Lock()
+        self.publish_lock = threading.Lock()
         self.last_import: dict | None = None
+        self.published_source = publish.PublishedSource(config.race_data_url or publish.RACE_DATA_URL)
         db.connect(config.db_path).close()  # 起動時にテーブルを用意
 
     @contextmanager
@@ -45,6 +47,14 @@ class App:
             yield conn
         finally:
             conn.close()
+
+    @property
+    def published(self) -> publish.Published:
+        return self.published_source.current
+
+    def published_info(self) -> dict:
+        p = self.published
+        return {"source": p.source, "loaded_at": p.loaded_at, "skills": p.size, "error": self.published_source.error}
 
     def run_import(self) -> dict:
         with self.import_lock, self.connect() as conn:
@@ -146,12 +156,13 @@ class Handler(BaseHTTPRequestHandler):
     # ---- API ----
     def get_overview(self, query):
         with self.app.connect() as conn:
-            events = review.overview(conn)
+            events = review.overview(conn, self.app.published)
         self.send_json({"events": events, "last_import": self.app.last_import})
 
     def get_group(self, query):
         with self.app.connect() as conn:
-            data = review.group(conn, self.app.master, query["event"], query["race"], query["strategy"])
+            data = review.group(conn, self.app.master, query["event"], query["race"], query["strategy"],
+                                self.app.published)
         for image in data["images"]:
             image["found"] = self.app.images.find(data["event"], image["file"]) is not None
         self.send_json(data)
@@ -183,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
         body = self.read_json()
         with self.app.connect() as conn:
             result = review.review_image(conn, self.app.master, body["event"], body["file"],
-                                         body["race"], body["strategy"])
+                                         body["race"], body["strategy"], self.app.published)
         self.send_json(result)
 
     def post_images_tier(self, query):
@@ -199,6 +210,40 @@ class Handler(BaseHTTPRequestHandler):
             review.set_event_hidden(conn, body["event"], bool(body["hidden"]))
         self.send_json({"ok": True})
 
+    def get_publish(self, query):
+        with self.app.connect() as conn:
+            hidden = {r["event"] for r in conn.execute("SELECT event FROM events WHERE hidden = 1")}
+            events = [r["event"] for r in conn.execute("SELECT DISTINCT event FROM skills ORDER BY event DESC")]
+            plans = [publish.plan_event(conn, self.app.master, self.app.published, e).to_dict()
+                     for e in events if e not in hidden]
+            history = publish.history(conn)
+        self.send_json({"plans": plans, "history": history, "published": self.app.published_info()})
+
+    def post_publish(self, query):
+        body = self.read_json()
+        dry_run = bool(body.get("dry_run"))
+        if not self.app.publish_lock.acquire(blocking=False):
+            raise review.ReviewError("ほかの公開依頼を処理中です。少し待ってからやり直してください")
+        try:
+            with self.app.connect() as conn:
+                plan = publish.plan_event(conn, self.app.master, self.app.published, body["event"])
+                result = publish.send(conn, plan, self.app.master.names, self.app.config.token_file, dry_run=dry_run)
+        except publish.PublishError as error:
+            raise review.ReviewError(str(error)) from error
+        finally:
+            self.app.publish_lock.release()
+        self.send_json(result)
+
+    def post_publish_reset(self, query):
+        body = self.read_json()
+        with self.app.connect() as conn:
+            count = publish.reset_requested(conn, body["event"])
+        self.send_json({"reset": count})
+
+    def post_published_refresh(self, query):
+        self.app.published_source.refresh()
+        self.send_json(self.app.published_info())
+
     def post_import(self, query):
         self.send_json(self.app.run_import())
 
@@ -212,16 +257,25 @@ ROUTES = {
     ("POST", "/api/images-tier"): Handler.post_images_tier,
     ("POST", "/api/import"): Handler.post_import,
     ("POST", "/api/event-hidden"): Handler.post_event_hidden,
+    ("GET", "/api/publish"): Handler.get_publish,
+    ("POST", "/api/publish"): Handler.post_publish,
+    ("POST", "/api/publish-reset"): Handler.post_publish_reset,
+    ("POST", "/api/published-refresh"): Handler.post_published_refresh,
 }
 
 
 def start_auto_import(app: App, interval: int) -> threading.Thread | None:
     """新しい抽出CSVを定期的に取り込む。"""
     if interval <= 0:
+        app.published_source.refresh()  # 自動取り込みなしでも、起動時に一度はサイトの内容を読む
         return None
 
     def loop():
         while True:
+            try:
+                app.published_source.refresh()
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
             try:
                 app.run_import()
             except Exception:  # noqa: BLE001 - 取り込み失敗でサーバは止めない

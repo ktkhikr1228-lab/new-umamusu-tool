@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 import sys
@@ -11,6 +12,7 @@ from guide_app.config import load_config  # noqa: E402
 from guide_app.importer import import_all, normalize_strategy, normalize_tier  # noqa: E402
 from guide_app.skill_master import SkillMaster  # noqa: E402
 from guide_app import review  # noqa: E402
+from guide_app import publish  # noqa: E402
 
 HEADER = "race,strategy,tier,skill,source_file,status,memo\n"
 MASTER = SkillMaster(["左回り○", "左回り◎", "末脚", "コーナー回復○"])
@@ -218,6 +220,109 @@ class GuideAppReviewTests(unittest.TestCase):
         self.assertEqual(index.find("ev", "x.png").read_text(), "b")
         self.assertEqual(index.find("ev", "C:\\uma\\x.png").read_text(), "b")
         self.assertIsNone(index.find("ev", "none.png"))
+
+
+class GuideAppPublishTests(unittest.TestCase):
+    RACE = "東京 芝 2400m"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "extracted"
+        self.conn = db.connect(Path(self.tmp.name) / "guide.sqlite3")
+        write(self.root / "ev" / "a.csv", HEADER + "\n".join([
+            f"{self.RACE},逃げ,super_recommended,末脚,1.png,ready,",          # サイトと同じ → 変更なし
+            f"{self.RACE},逃げ,super_recommended,左回り◯,1.png,ready,",       # サイトではおすすめ → 区分変更
+            f"{self.RACE},逃げ,recommended,コーナー回復○,2.png,ready,",       # サイトにない → 追加
+            f"{self.RACE},逃げ,recommended,左回り◎,2.png,,",                  # 未確認 → 含めない
+            f"{self.RACE},逃げ,recommended,謎スキル,2.png,ready,",             # マスタにない → 公開できない
+        ]) + "\n")
+        import_all(self.conn, self.root, MASTER)
+        self.site = publish.Published({self.RACE: {"逃げ": {"super_recommended": ["末脚"], "recommended": ["左回り○"]}}})
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def plan(self):
+        return publish.plan_event(self.conn, MASTER, self.site, "ev")
+
+    def test_published_status(self):
+        self.assertEqual(self.site.status(self.RACE, "逃げ", "末脚", "super_recommended"), "same")
+        self.assertEqual(self.site.status(self.RACE, "逃げ", "左回り◯", "super_recommended"), "moved")
+        self.assertEqual(self.site.status(self.RACE, "先行", "末脚", "super_recommended"), "new")
+
+    def test_plan_splits_rows_by_what_changes(self):
+        plan = self.plan()
+        self.assertEqual([r["skill"] for r in plan.added], ["コーナー回復○"])
+        self.assertEqual([(r["skill"], r["current_tier"]) for r in plan.moved], [("左回り○", "recommended")])
+        self.assertEqual((plan.unchanged, plan.draft), (1, 1))
+        self.assertEqual([r["skill"] for r in plan.blocked], ["謎スキル"])
+
+    def test_send_refuses_blocked_rows_then_records_success(self):
+        calls = []
+        with self.assertRaises(publish.PublishError):
+            publish.send(self.conn, self.plan(), MASTER.names, Path("unused"), dispatch=lambda *a: calls.append(a))
+        with self.conn:
+            self.conn.execute("UPDATE skills SET status = 'rejected' WHERE skill = '謎スキル'")
+        dry = publish.send(self.conn, self.plan(), MASTER.names, Path("unused"), dry_run=True)
+        self.assertEqual((dry["rows"], dry["requests"], dry["sent"], calls), (2, 1, False, []))
+
+        token = write(Path(self.tmp.name) / "token", "secret\n")
+        result = publish.send(self.conn, self.plan(), MASTER.names, token, dispatch=lambda req, tok: calls.append((req, tok)))
+        self.assertTrue(result["sent"])
+        self.assertEqual(calls[0][1], "secret")
+        self.assertEqual({r["skill"] for r in calls[0][0]["rows"]}, {"コーナー回復○", "左回り○"})
+        after = self.plan()
+        self.assertEqual((after.rows, after.requested), ([], 2))  # 送った行は二重に依頼しない
+        self.assertEqual(publish.history(self.conn)[0]["rows"], 2)
+        self.assertEqual(publish.reset_requested(self.conn, "ev"), 2)
+        self.assertEqual(len(self.plan().rows), 2)
+
+    def test_failed_dispatch_is_reported_and_logged(self):
+        with self.conn:
+            self.conn.execute("UPDATE skills SET status = 'rejected' WHERE skill = '謎スキル'")
+        token = write(Path(self.tmp.name) / "token", "secret")
+
+        def boom(req, tok):
+            raise RuntimeError("network down")
+        with self.assertRaises(publish.PublishError):
+            publish.send(self.conn, self.plan(), MASTER.names, token, dispatch=boom)
+        self.assertIn("network down", publish.history(self.conn)[0]["result"]["error"])
+        self.assertEqual(len(self.plan().rows), 2)  # 何も送れていないので依頼済みにはしない
+
+    def test_missing_token_is_explained(self):
+        with self.conn:
+            self.conn.execute("UPDATE skills SET status = 'rejected' WHERE skill = '謎スキル'")
+        with self.assertRaises(publish.PublishError):
+            publish.send(self.conn, self.plan(), MASTER.names, Path(self.tmp.name) / "none", dispatch=lambda *a: None)
+
+    def test_large_requests_are_split_under_the_size_limit(self):
+        names = [f"テストスキル{i:04d}" for i in range(900)]
+        rows = [{"race": self.RACE, "strategy": "逃げ", "tier": "recommended", "skill": n} for n in names]
+        requests = publish.build_requests("ev", rows, names)
+        self.assertGreater(len(requests), 1)
+        self.assertEqual(sum(len(r["rows"]) for r in requests), 900)
+        for r in requests:
+            size = len(json.dumps(r, ensure_ascii=False, separators=(",", ":")).encode())
+            self.assertLessEqual(size, publish.CHUNK_BYTES)
+
+    def test_published_source_falls_back_to_local_file(self):
+        local = write(Path(self.tmp.name) / "race.json", json.dumps({self.RACE: {"逃げ": {"recommended": ["末脚"]}}}))
+
+        def offline(*a, **k):
+            raise OSError("offline")
+        source = publish.PublishedSource("https://example.invalid/x.json", local, opener=offline)
+        current = source.refresh()
+        self.assertEqual((current.source, current.size), ("手元のrace_data.json", 1))
+        self.assertIn("offline", source.error)
+
+    def test_review_marks_site_tier_difference_as_attention(self):
+        data = review.group(self.conn, MASTER, "ev", self.RACE, "逃げ", self.site)
+        rows = {r["skill"]: r for im in data["images"] for r in im["rows"]}
+        self.assertEqual(rows["末脚"]["published"], "same")
+        self.assertTrue(any("サイトでは" in a for a in rows["左回り○"]["attention"]))
+        todo = review.overview(self.conn, self.site)[0]["todo"]
+        self.assertEqual(todo, 1)  # 未確認は左回り◎だけ(サイトにない)
 
 
 if __name__ == "__main__":

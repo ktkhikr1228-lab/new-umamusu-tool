@@ -29,8 +29,8 @@ def _base_name(skill: str) -> str:
     return normalize(skill).rstrip("○◎")
 
 
-def attention_reasons(rows: list[dict], master: SkillMaster) -> dict[int, list[str]]:
-    """行ごとの要注意理由。rowsは同じ (イベント, コース, 脚質) の全行。"""
+def attention_reasons(rows: list[dict], master: SkillMaster, published=None) -> dict[int, list[str]]:
+    """行ごとの要注意理由。rowsは同じ (イベント, コース, 脚質) の全行。publishedはサイトの内容(任意)。"""
     reasons: dict[int, list[str]] = defaultdict(list)
     live = [r for r in rows if r["status"] != "rejected"]
 
@@ -50,10 +50,13 @@ def attention_reasons(rows: list[dict], master: SkillMaster) -> dict[int, list[s
             reasons[r["id"]].append("同じ画像に○と◎の両方がある")
         if len(tiers_by_skill[normalize(r["skill"])]) > 1:
             reasons[r["id"]].append("超おすすめ・おすすめの両方にある")
+        current = published.tier(r["race"], r["strategy"], r["skill"]) if published else None
+        if current and current != r["tier"]:
+            reasons[r["id"]].append(f"サイトでは{TIER_LABELS[current]}(OKにすると区分が変わる)")
     return dict(reasons)
 
 
-def overview(conn: sqlite3.Connection) -> list[dict]:
+def overview(conn: sqlite3.Connection, published=None) -> list[dict]:
     """ホーム画面用: イベント → コース → 脚質ごとの件数。"""
     rows = conn.execute(
         """
@@ -71,12 +74,18 @@ def overview(conn: sqlite3.Connection) -> list[dict]:
         """
     ).fetchall()
     hidden = {r["event"] for r in conn.execute("SELECT event FROM events WHERE hidden = 1")}
+    # 確認が必要な行 = 未確認のうち、サイトに同じ区分で出ていないもの
+    todo: dict[tuple[str, str, str], int] = defaultdict(int)
+    for r in conn.execute("SELECT event, race, strategy, tier, skill FROM skills WHERE status = 'draft'"):
+        if not published or published.status(r["race"], r["strategy"], r["skill"], r["tier"]) != "same":
+            todo[(r["event"], r["race"], r["strategy"])] += 1
     events: dict[str, dict] = {}
     for r in rows:
         ev = events.setdefault(r["event"], {"event": r["event"], "races": {}, "latest": ""})
         ev["latest"] = max(ev["latest"], r["latest"] or "")
         race = ev["races"].setdefault(r["race"], {"race": r["race"], "strategies": []})
-        race["strategies"].append({k: r[k] for k in r.keys() if k not in ("event", "race", "latest")})
+        race["strategies"].append({k: r[k] for k in r.keys() if k not in ("event", "race", "latest")}
+                                  | {"todo": todo[(r["event"], r["race"], r["strategy"])]})
     result = []
     # 表示中を先に、新しく取り込んだイベントほど上に。同時刻ならイベント名の新しい順
     ordered = sorted(events.values(), key=lambda e: (e["latest"], e["event"]), reverse=True)
@@ -87,7 +96,7 @@ def overview(conn: sqlite3.Connection) -> list[dict]:
             race["strategies"].sort(key=lambda s: STRATEGY_ORDER.get(s["strategy"], 9))
             races.append(race)
         totals = {k: sum(s[k] for race in races for s in race["strategies"])
-                  for k in ("total", "draft", "ready", "rejected", "images", "images_reviewed")}
+                  for k in ("total", "draft", "ready", "rejected", "images", "images_reviewed", "todo")}
         result.append({"event": ev["event"], "races": races, "hidden": ev["event"] in hidden,
                        "latest": ev["latest"], **totals})
     return result
@@ -104,7 +113,8 @@ def set_event_hidden(conn: sqlite3.Connection, event: str, hidden: bool) -> None
         )
 
 
-def group(conn: sqlite3.Connection, master: SkillMaster, event: str, race: str, strategy: str) -> dict:
+def group(conn: sqlite3.Connection, master: SkillMaster, event: str, race: str, strategy: str,
+          published=None) -> dict:
     """確認画面用: 1つの (イベント, コース, 脚質) を画像ごとにまとめて返す。"""
     rows = [dict(r) for r in conn.execute(
         "SELECT * FROM skills WHERE event = ? AND race = ? AND strategy = ? ORDER BY source_file, id",
@@ -114,13 +124,14 @@ def group(conn: sqlite3.Connection, master: SkillMaster, event: str, race: str, 
         raise ReviewError("該当するデータがありません")
     reviewed = {r["source_file"]: r["reviewed_at"] for r in conn.execute(
         "SELECT source_file, reviewed_at FROM images WHERE event = ?", (event,))}
-    reasons = attention_reasons(rows, master)
+    reasons = attention_reasons(rows, master, published)
 
     images: dict[str, dict] = {}
     for r in rows:
         r["attention"] = reasons.get(r["id"], [])
         r["known"] = master.canonical(r["skill"]) is not None
         r["suggestions"] = [] if r["known"] else master.suggest(r["skill"])
+        r["published"] = published.status(race, strategy, r["skill"], r["tier"]) if published else "new"
         image = images.setdefault(r["source_file"], {
             "file": r["source_file"], "reviewed_at": reviewed.get(r["source_file"]), "rows": []})
         image["rows"].append(r)
@@ -166,9 +177,9 @@ def update_row(conn: sqlite3.Connection, row_id: int, changes: dict) -> dict:
 
 
 def review_image(conn: sqlite3.Connection, master: SkillMaster, event: str, source_file: str,
-                 race: str, strategy: str) -> dict:
+                 race: str, strategy: str, published=None) -> dict:
     """「この画像OK」。合致していて要注意でない未確認行をOKにし、画像を確認済みにする。"""
-    data = group(conn, master, event, race, strategy)
+    data = group(conn, master, event, race, strategy, published)
     image = next((i for i in data["images"] if i["file"] == source_file), None)
     if image is None:
         raise ReviewError("画像が見つかりません")
