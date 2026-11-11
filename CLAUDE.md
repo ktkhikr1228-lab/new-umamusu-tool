@@ -40,7 +40,7 @@
 - 因子周回モードでは `◎` スキルと `non_factor_skills.json` 記載のスキルを除外する仕様
 - スキルデータの手編集はrace_data.jsonに直接せず、ガイド確認アプリ経由(公開依頼→PR)で行う
 - ガイド確認アプリのcron登録は既存の行を残して1行だけ追加・削除する。crontabを丸ごと書き換えない
-- Prisma・PostgreSQL(RaceSkillテーブル)と `sync_pi_guide_data.py` は旧手順。新しい作業には使わない
+- Prisma・PostgreSQL(RaceSkillテーブル)は旧手順。新しい作業には使わない
 
 ## 作業スタイル
 
