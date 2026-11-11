@@ -63,7 +63,6 @@ npm run dev
 | [`frontend/app/`](frontend/app/)・[`frontend/src/`](frontend/src/) | Next.js・React・TypeScript・Tailwind CSSによる公開画面と編成ロジック |
 | [`frontend/src/data/`](frontend/src/data/) | 公開画面が参照するサポカ・レース・スキルのJSON |
 | [`tools/guide_app/`](tools/guide_app/) | おすすめスキルの確認・公開アプリ(Raspberry Pi常駐) |
-| [`frontend/prisma/`](frontend/prisma/) | 旧手順の編集DB(Prisma)の定義。新しい作業には使いません |
 | [`backend/tools/`](backend/tools/)・[`backend/tests/`](backend/tests/) | データ取得・抽出・公開用スクリプトとテスト |
 | [`tools/screenshot/`](tools/screenshot/) | Windowsでの撮影・転送ツール |
 | [`.github/workflows/`](.github/workflows/) | データ更新・検証・公開PRの自動化 |
