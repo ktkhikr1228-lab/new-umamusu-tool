@@ -13,3 +13,6 @@ _pi/
 
 # guide_app のローカル設定
 tools/guide_app/config.toml
+
+# guide_app の実行時ファイル(PID・ログ)
+tools/guide_app/run/

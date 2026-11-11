@@ -16,6 +16,23 @@ python3 tools/guide_app serve
 
 ブラウザで `http://uma-pi:8090/` を開きます。新しい抽出CSVは5分おきに自動で取り込まれます(ホームの「今すぐ取り込む」でも可)。
 
+### 常駐させる(再起動後も自動で起動)
+
+```bash
+bash tools/guide_app/guide_app.sh install   # 自動起動を登録して、今すぐ起動
+```
+
+| やりたいこと | コマンド |
+| --- | --- |
+| 動いているか確認 | `bash tools/guide_app/guide_app.sh status` |
+| 最新版に更新して再起動 | `bash tools/guide_app/guide_app.sh update` |
+| 再起動 / 停止 | `bash tools/guide_app/guide_app.sh restart` / `stop` |
+| ログを見る | `bash tools/guide_app/guide_app.sh log` |
+| 自動起動をやめる | `bash tools/guide_app/guide_app.sh uninstall` |
+
+- 自動起動は既存のアップロード画面と同じく cron の `@reboot` を使います。既存のcronの行には触れず、このアプリの1行だけを追加・削除します(変更前の内容は `tools/guide_app/run/crontab.backup` に保存)
+- アプリが落ちても5秒後に自動で立ち上げ直します。ログは `tools/guide_app/run/guide_app.log`
+
 設定を変えたいときは `config.example.toml` を `config.toml` にコピーして編集します(コミットされません)。
 
 ## 確認の進め方
