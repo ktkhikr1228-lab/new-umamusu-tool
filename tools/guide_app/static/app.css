@@ -46,6 +46,8 @@ table.grid th, table.grid td { padding: 7px 8px; border-bottom: 1px solid var(--
 table.grid td.n, table.grid th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .evhead { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 .evhead > div { flex: 1; min-width: 240px; }
+.evhead { align-items: center; }
+details.card summary { cursor: pointer; }
 .problems { font-size: 13px; color: var(--warn); margin: 6px 0 0; padding-left: 18px; }
 
 /* 確認画面 */

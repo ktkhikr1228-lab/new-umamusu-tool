@@ -69,7 +69,17 @@ async function showHome() {
     <div class="card small muted">${imp}
       <button class="btn sm" data-act="import-now" style="margin-left:8px">今すぐ取り込む</button>
     </div>
-    ${events.length ? events.map(eventCard).join("") : `<div class="card">まだデータがありません。抽出CSVを取り込むとここに表示されます。</div>`}`;
+    ${events.length ? events.filter((e) => !e.hidden).map(eventCard).join("") : `<div class="card">まだデータがありません。抽出CSVを取り込むとここに表示されます。</div>`}
+    ${hiddenList(events.filter((e) => e.hidden))}`;
+}
+
+function hiddenList(list) {
+  if (!list.length) return "";
+  return `<details class="card small"><summary class="muted">非表示のイベント ${list.length}件</summary>
+    <table class="grid">${list.map((e) => `
+      <tr><td>${esc(e.event)}</td><td class="n muted">${e.total}行</td>
+        <td class="n"><button class="btn sm" data-act="event-hidden" data-event="${esc(e.event)}" data-v="0">表示に戻す</button></td></tr>`).join("")}
+    </table></details>`;
 }
 
 function eventCard(ev) {
@@ -84,6 +94,7 @@ function eventCard(ev) {
         <div class="muted small">${ev.races.map((r) => esc(r.race)).join("・")} ・ 画像 ${ev.images}枚(確認済み ${ev.images_reviewed})・ ${ev.total}行</div>
       </div>
       ${next ? `<a class="btn primary" href="${next}">続きを確認する</a>` : `<span class="chip ok">未確認なし</span>`}
+      <button class="btn sm" data-act="event-hidden" data-event="${esc(ev.event)}" data-v="1" title="テスト用などのイベントを隠す(データは消えません)">非表示</button>
     </div>
     <div class="bar"><i style="width:${pct(ev.ready)};background:var(--ok)"></i><i style="width:${pct(ev.rejected)};background:var(--ng)"></i></div>
     <div class="chips"><span class="chip">未確認 ${ev.draft}</span><span class="chip ok">OK ${ev.ready}</span><span class="chip">却下 ${ev.rejected}</span></div>
@@ -283,7 +294,8 @@ async function confirmImage() {
   state.busy = true;
   try {
     const r = await api("/api/review-image", { event: g.event, race: g.race, strategy: g.strategy, file: im.file });
-    toast(`${r.approved}行をOKにしました` + (r.pending ? `(要確認 ${r.pending}行は未確認のまま)` : ""));
+    toast(r.already_reviewed && !r.approved ? "この画像はすでに確認済みです"
+      : `${r.approved}行をOKにしました` + (r.pending ? `(要確認 ${r.pending}行は未確認のまま)` : ""));
     if (state.filter === "all") state.cur += 1;  // 未完了モードでは確認した画像が一覧から消えるので位置はそのまま
     await loadGroup();
     window.scrollTo(0, 0);
@@ -324,6 +336,10 @@ document.addEventListener("click", (ev) => {
   const { act, v, id } = el.dataset;
   if (act === "import-now") {
     api("/api/import", {}).then((r) => { toast(`取り込み: 追加 ${r.added}行`); route(); }).catch((e) => toast(e.message, true));
+  } else if (act === "event-hidden") {
+    api("/api/event-hidden", { event: el.dataset.event, hidden: v === "1" })
+      .then(() => { toast(v === "1" ? "非表示にしました(一番下から戻せます)" : "表示に戻しました"); showHome(); })
+      .catch((e) => toast(e.message, true));
   } else if (act === "filter") {
     Object.assign(state, { filter: v, cur: 0, selected: new Set(), focus: 0 });
     renderReview();

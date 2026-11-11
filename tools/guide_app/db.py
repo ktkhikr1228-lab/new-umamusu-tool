@@ -48,6 +48,13 @@ MIGRATIONS = [
         PRIMARY KEY (event, source_file)
     );
     """,
+    # v3: イベントの表示設定(テスト用イベントを隠す)
+    """
+    CREATE TABLE events (
+        event  TEXT PRIMARY KEY,
+        hidden INTEGER NOT NULL DEFAULT 0
+    );
+    """,
 ]
 
 

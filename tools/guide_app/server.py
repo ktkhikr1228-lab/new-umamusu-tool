@@ -193,6 +193,12 @@ class Handler(BaseHTTPRequestHandler):
                                             list(body["files"]), body["tier"])
         self.send_json(result)
 
+    def post_event_hidden(self, query):
+        body = self.read_json()
+        with self.app.connect() as conn:
+            review.set_event_hidden(conn, body["event"], bool(body["hidden"]))
+        self.send_json({"ok": True})
+
     def post_import(self, query):
         self.send_json(self.app.run_import())
 
@@ -205,6 +211,7 @@ ROUTES = {
     ("POST", "/api/review-image"): Handler.post_review_image,
     ("POST", "/api/images-tier"): Handler.post_images_tier,
     ("POST", "/api/import"): Handler.post_import,
+    ("POST", "/api/event-hidden"): Handler.post_event_hidden,
 }
 
 

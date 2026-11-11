@@ -157,7 +157,7 @@ class GuideAppReviewTests(unittest.TestCase):
 
     def test_review_image_approves_only_matched_rows(self):
         result = review.review_image(self.conn, MASTER, self.EV, "2.png", self.RACE, self.STRAT)
-        self.assertEqual(result, {"approved": 1, "pending": 1})
+        self.assertEqual(result, {"approved": 1, "pending": 1, "already_reviewed": False})
         rows = self.rows()
         self.assertEqual(rows[("2.png", "コーナー回復○", "recommended")]["status"], "ready")
         self.assertEqual(rows[("2.png", "末脚", "recommended")]["status"], "draft")
@@ -193,6 +193,22 @@ class GuideAppReviewTests(unittest.TestCase):
         review.review_image(self.conn, MASTER, self.EV, "2.png", self.RACE, self.STRAT)
         ev = review.overview(self.conn)[0]
         self.assertEqual((ev["images"], ev["images_reviewed"], ev["ready"]), (2, 1, 1))
+
+    def test_hidden_events_go_last_and_can_be_restored(self):
+        write(self.root / "smoke-test" / "a.csv", HEADER + f"{self.RACE},逃げ,recommended,末脚,9.png,,\n")
+        import_all(self.conn, self.root, MASTER)
+        review.set_event_hidden(self.conn, "smoke-test", True)
+        events = review.overview(self.conn)
+        self.assertEqual([(e["event"], e["hidden"]) for e in events], [("ev", False), ("smoke-test", True)])
+        review.set_event_hidden(self.conn, "smoke-test", False)
+        self.assertFalse(any(e["hidden"] for e in review.overview(self.conn)))
+        with self.assertRaises(review.ReviewError):
+            review.set_event_hidden(self.conn, "none", True)
+
+    def test_review_image_twice_reports_already_reviewed(self):
+        first = review.review_image(self.conn, MASTER, self.EV, "2.png", self.RACE, self.STRAT)
+        second = review.review_image(self.conn, MASTER, self.EV, "2.png", self.RACE, self.STRAT)
+        self.assertEqual((first["already_reviewed"], second["already_reviewed"], second["approved"]), (False, True, 0))
 
     def test_image_index_prefers_event_folder(self):
         shots = Path(self.tmp.name) / "shots"

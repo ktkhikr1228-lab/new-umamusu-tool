@@ -63,27 +63,45 @@ def overview(conn: sqlite3.Connection) -> list[dict]:
                SUM(s.status = 'ready') AS ready,
                SUM(s.status = 'rejected') AS rejected,
                COUNT(DISTINCT s.source_file) AS images,
-               COUNT(DISTINCT CASE WHEN i.reviewed_at IS NOT NULL THEN s.source_file END) AS images_reviewed
+               COUNT(DISTINCT CASE WHEN i.reviewed_at IS NOT NULL THEN s.source_file END) AS images_reviewed,
+               MAX(s.created_at) AS latest
         FROM skills s
         LEFT JOIN images i ON i.event = s.event AND i.source_file = s.source_file
         GROUP BY s.event, s.race, s.strategy
         """
     ).fetchall()
+    hidden = {r["event"] for r in conn.execute("SELECT event FROM events WHERE hidden = 1")}
     events: dict[str, dict] = {}
     for r in rows:
-        ev = events.setdefault(r["event"], {"event": r["event"], "races": {}})
+        ev = events.setdefault(r["event"], {"event": r["event"], "races": {}, "latest": ""})
+        ev["latest"] = max(ev["latest"], r["latest"] or "")
         race = ev["races"].setdefault(r["race"], {"race": r["race"], "strategies": []})
-        race["strategies"].append({k: r[k] for k in r.keys() if k not in ("event", "race")})
+        race["strategies"].append({k: r[k] for k in r.keys() if k not in ("event", "race", "latest")})
     result = []
-    for ev in sorted(events.values(), key=lambda e: e["event"], reverse=True):
+    # 表示中を先に、新しく取り込んだイベントほど上に。同時刻ならイベント名の新しい順
+    ordered = sorted(events.values(), key=lambda e: (e["latest"], e["event"]), reverse=True)
+    ordered.sort(key=lambda e: e["event"] in hidden)
+    for ev in ordered:
         races = []
         for race in sorted(ev["races"].values(), key=lambda x: x["race"]):
             race["strategies"].sort(key=lambda s: STRATEGY_ORDER.get(s["strategy"], 9))
             races.append(race)
         totals = {k: sum(s[k] for race in races for s in race["strategies"])
                   for k in ("total", "draft", "ready", "rejected", "images", "images_reviewed")}
-        result.append({"event": ev["event"], "races": races, **totals})
+        result.append({"event": ev["event"], "races": races, "hidden": ev["event"] in hidden,
+                       "latest": ev["latest"], **totals})
     return result
+
+
+def set_event_hidden(conn: sqlite3.Connection, event: str, hidden: bool) -> None:
+    """イベントをホームで隠す/戻す。データは消さない。"""
+    if not conn.execute("SELECT 1 FROM skills WHERE event = ? LIMIT 1", (event,)).fetchone():
+        raise ReviewError("イベントが見つかりません")
+    with conn:
+        conn.execute(
+            "INSERT INTO events (event, hidden) VALUES (?, ?) ON CONFLICT (event) DO UPDATE SET hidden = excluded.hidden",
+            (event, int(bool(hidden))),
+        )
 
 
 def group(conn: sqlite3.Connection, master: SkillMaster, event: str, race: str, strategy: str) -> dict:
@@ -156,6 +174,7 @@ def review_image(conn: sqlite3.Connection, master: SkillMaster, event: str, sour
         raise ReviewError("画像が見つかりません")
     ids = [r["id"] for r in image["rows"] if r["status"] == "draft" and r["known"] and not r["attention"]]
     pending = [r for r in image["rows"] if r["status"] == "draft" and (not r["known"] or r["attention"])]
+    already = image["reviewed_at"] is not None
     with conn:
         conn.executemany(
             "UPDATE skills SET status = 'ready', updated_at = datetime('now', 'localtime') WHERE id = ?",
@@ -166,7 +185,7 @@ def review_image(conn: sqlite3.Connection, master: SkillMaster, event: str, sour
                ON CONFLICT (event, source_file) DO UPDATE SET reviewed_at = excluded.reviewed_at""",
             (event, source_file),
         )
-    return {"approved": len(ids), "pending": len(pending)}
+    return {"approved": len(ids), "pending": len(pending), "already_reviewed": already}
 
 
 def set_images_tier(conn: sqlite3.Connection, event: str, race: str, strategy: str,
