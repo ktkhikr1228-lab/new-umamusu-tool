@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import difflib
 import json
 import mimetypes
@@ -19,7 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,6 +62,7 @@ class Reader:
     key_env: str = ""
     key_header: str = "Authorization"   # キーを渡すヘッダー名。Authorization以外なら「Bearer 」を付けずにそのまま送る
     min_interval: float = 0.0   # 連続で呼ぶときの最低間隔(秒)。無料枠の回数制限向け
+    primary: bool = False       # 2段階の読み取りで、最初に全画像を読むモデル
     timeout: int = 120
 
     def key(self) -> str:
@@ -124,7 +126,30 @@ def list_events(inbox: Path) -> list[str]:
     return sorted((p.name for p in inbox.iterdir() if p.is_dir() and EVENT_RE.fullmatch(p.name)), reverse=True)
 
 
-def captures(conn: sqlite3.Connection, inbox: Path, reader_names: list[str]) -> list[dict]:
+def primary_name(readers) -> str:
+    """2段階の読み取りで最初に読むモデルの名前。2段階でなければ空文字。"""
+    names = [r.name for r in readers if r.primary]
+    return names[0] if names and len(readers) >= 2 else ""
+
+
+def required_readers(file: str, names: list[str], primary: str, ok: set, council: dict) -> list[str]:
+    """その画像を読むべきモデル。2段階のときは、まず1次のモデルだけ。会議に回すと決まった画像は全モデル。"""
+    if not primary:
+        return list(names)
+    if (file, primary) not in ok or council.get(file) != 1:
+        return [primary]
+    return list(names)
+
+
+def read_state(conn: sqlite3.Connection, event: str) -> tuple[set, dict]:
+    ok = {(r["source_file"], r["reader"]) for r in conn.execute(
+        "SELECT source_file, reader FROM readings WHERE event = ? AND error = ''", (event,))}
+    council = {r["source_file"]: r["council"] for r in conn.execute(
+        "SELECT source_file, council FROM images WHERE event = ?", (event,))}
+    return ok, council
+
+
+def captures(conn: sqlite3.Connection, inbox: Path, reader_names: list[str], primary: str = "") -> list[dict]:
     """ホーム画面用: イベントごとの撮影枚数と、まだ読み取っていない枚数。"""
     result = []
     saved_race = {r["event"]: r["race"] for r in conn.execute("SELECT event, race FROM events")}
@@ -135,12 +160,12 @@ def captures(conn: sqlite3.Connection, inbox: Path, reader_names: list[str]) -> 
         # 以前のCSV取り込みで行がある画像は抽出済みとして扱う。このアプリで読んだ画像は、全モデルが読めて初めて抽出済み
         have_rows = {r["source_file"] for r in conn.execute(
             "SELECT DISTINCT source_file FROM skills WHERE event = ? AND source_csv != 'guide_app'", (event,))}
-        read = Counter(r["source_file"] for r in conn.execute(
-            "SELECT source_file FROM readings WHERE event = ? AND error = ''", (event,)))
+        ok, council = read_state(conn, event)
         cells: dict[tuple[str, str], dict] = {}
         pending = 0
         for s in shots:
-            done = s.file in have_rows or (reader_names and read[s.file] >= len(reader_names))
+            done = s.file in have_rows or (reader_names and all(
+                (s.file, name) in ok for name in required_readers(s.file, reader_names, primary, ok, council)))
             cell = cells.setdefault((s.strategy, s.tier or ""), {"strategy": s.strategy, "tier": s.tier, "images": 0, "pending": 0})
             cell["images"] += 1
             if not done:
@@ -411,6 +436,7 @@ def auto_decide(conn: sqlite3.Connection, master: SkillMaster | None, event: str
 
     ok = rejected = 0
     warned = {r["source_file"] for r in conn.execute("SELECT source_file FROM images WHERE event = ? AND warning != ''", (event,))}
+    passed = {r["source_file"] for r in conn.execute("SELECT source_file FROM images WHERE event = ? AND council = 0", (event,))}
     groups = conn.execute("SELECT DISTINCT race, strategy FROM skills WHERE event = ? AND source_csv = 'guide_app'", (event,)).fetchall()
     for g in groups:
         rows = [dict(r) for r in conn.execute(
@@ -421,9 +447,17 @@ def auto_decide(conn: sqlite3.Connection, master: SkillMaster | None, event: str
                 continue
             known = master.canonical(row["skill"]) is not None if master else False
             votes, readers = row["votes"] or 0, row["readers"] or 0
-            if readers < 2:
-                continue
             concerns = [r for r in reasons.get(row["id"], []) if "モデルだけが読んだ" not in r]
+            if readers < 2:
+                # 2段階の読み取りで、1次のモデルだけで通した画像の行。会議に回す条件(マスタにない名前・食い違い)に
+                # 当たらなかった画像なので、マスタにあればOKにする。○と◎の読み分けは1モデルでは確かめられないが、
+                # 因子周回では◎を○として扱うので影響は小さい(抜き取り検査で食い違いの量は測る)
+                concerns = [r for r in concerns if "◎" not in r]
+                if row["source_file"] in passed and known and not concerns:
+                    conn.execute("UPDATE skills SET status = 'ready', memo = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+                                 ("自動OK(1次の読み取りのみ)", row["id"]))
+                    ok += 1
+                continue
             if known and votes * 2 > readers and not concerns:
                 conn.execute("UPDATE skills SET status = 'ready', memo = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
                              (f"自動OK({votes}/{readers})", row["id"]))
@@ -473,6 +507,8 @@ class Job:
     auto_ok: int = 0
     auto_rejected: int = 0
     warnings: int = 0         # フォルダと中身が食い違う画像の数
+    council: int = 0          # 2段階の読み取りで、会議(全モデル)に回した画像の数
+    stage: str = ""           # いまの段階(画面に出す)
     errors: list[str] = field(default_factory=list)
     state: str = "running"    # running / finished / cancelled / failed
     started_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -480,25 +516,54 @@ class Job:
     current: str = ""
 
     def to_dict(self) -> dict:
-        keys = ("event", "race", "total", "done", "requests", "rows", "auto_ok", "auto_rejected", "warnings",
+        keys = ("event", "race", "total", "done", "requests", "rows", "auto_ok", "auto_rejected", "warnings", "council", "stage",
                 "state", "started_at", "finished_at", "current")
         return {k: getattr(self, k) for k in keys} | {"errors": self.errors[-20:]}
 
 
 def plan(conn: sqlite3.Connection, inbox: Path, event: str, readers: list[Reader], force: bool = False) -> list[tuple[Shot, list[Reader]]]:
-    """読み取りが必要な (画像, 呼ぶモデル) の一覧。読み取り済みの組み合わせは省く。"""
-    done = {(r["source_file"], r["reader"]) for r in conn.execute(
-        "SELECT source_file, reader FROM readings WHERE event = ? AND error = ''", (event,))}
+    """読み取りが必要な (画像, 呼ぶモデル) の一覧。読み取り済みの組み合わせは省く。
+
+    2段階のときは、1次のモデルの分と、すでに会議に回すと決まっている画像の残りだけが入る。
+    """
+    ok, council = read_state(conn, event)
+    primary = primary_name(readers)
+    names = [r.name for r in readers]
+    by_name = {r.name: r for r in readers}
     imported = {r["source_file"] for r in conn.execute(
         "SELECT DISTINCT source_file FROM skills WHERE event = ? AND source_csv != 'guide_app'", (event,))}
     work = []
     for shot in list_shots(inbox, event):
         if shot.file in imported and not force:   # 以前のCSV取り込みで行がある画像は触らない
             continue
-        todo = [r for r in readers if force or (shot.file, r.name) not in done]
-        if todo:
-            work.append((shot, todo))
+        if force:
+            wanted = [primary] if primary else names
+        else:
+            wanted = [n for n in required_readers(shot.file, names, primary, ok, council) if (shot.file, n) not in ok]
+        if wanted:
+            work.append((shot, [by_name[n] for n in wanted]))
     return work
+
+
+def spot_checked(file: str, every: int) -> bool:
+    """抜き取り検査の対象か。ファイル名で決めるので、やり直しても同じ画像が選ばれる。"""
+    return every > 0 and int(hashlib.sha1(file.encode("utf-8")).hexdigest(), 16) % every == 0
+
+
+def council_reason(shot: Shot, race: str, reading: dict | None, master: SkillMaster | None, spot_check: int) -> str:
+    """1次の読み取りだけで通さず、会議(全モデル)に回す理由。空文字なら1次だけで通す。"""
+    if reading is None:
+        return "1次のモデルが読めなかった"
+    names = [n for s in reading["sections"] for n in s["skills"]]
+    if not names:
+        return "スキルが1つも読めていない"
+    if master and any(master.canonical(n) is None for n in names):
+        return "マスタにない名前がある"
+    if image_warnings(shot, race, [reading]):
+        return "撮影時の設定と食い違う"
+    if spot_checked(shot.file, spot_check):
+        return "抜き取り検査"
+    return ""
 
 
 def validate_race(race: str) -> str:
@@ -512,10 +577,15 @@ class Extractor:
     """抽出ジョブを1つずつ裏で動かす。"""
 
     def __init__(self, connect, inbox: Path, readers: list[Reader], master: SkillMaster | None,
-                 call=call_reader, auto_confirm: bool = False, get_published=None):
+                 call=call_reader, auto_confirm: bool = False, get_published=None,
+                 parallel_images: int = 3, spot_check: int = 5):
         self.connect, self.inbox, self.readers, self.master, self.call = connect, Path(inbox), list(readers), master, call
         self.auto_confirm = auto_confirm
         self.get_published = get_published or (lambda: None)
+        self.parallel_images = max(1, parallel_images)
+        self.spot_check = max(0, spot_check)
+        self.primary = primary_name(self.readers)
+        self._reader_locks = {r.name: threading.Lock() for r in self.readers}
         self.job: Job | None = None
         self._lock = threading.Lock()
         self._cancel = threading.Event()
@@ -526,7 +596,8 @@ class Extractor:
         with self.connect() as conn:
             work = plan(conn, self.inbox, event, self.readers, force)
         return {"event": event, "images": len(work), "requests": sum(len(todo) for _, todo in work),
-                "readers": [{"name": r.name, "model": r.model} for r in self.readers], "auto_confirm": self.auto_confirm}
+                "readers": [{"name": r.name, "model": r.model} for r in self.readers], "auto_confirm": self.auto_confirm,
+                "primary": self.primary, "spot_check": self.spot_check}
 
     def start(self, event: str, race: str = "", force: bool = False, wait: bool = False) -> Job:
         """race を空にすると、画像から読み取ったコースを使う。"""
@@ -559,49 +630,108 @@ class Extractor:
     def status(self) -> dict | None:
         return self.job.to_dict() if self.job else None
 
-    def _read(self, reader: Reader, shot: Shot) -> tuple[Reader, dict | None, str]:
-        wait = reader.min_interval - (time.monotonic() - self._last_call.get(reader.name, 0.0))
-        if wait > 0:
-            self._cancel.wait(wait)
-        self._last_call[reader.name] = time.monotonic()
+    def _read(self, reader: Reader, shot: Shot) -> tuple[Shot, Reader, dict | None, str]:
+        if self._cancel.is_set():
+            return shot, reader, None, "中止しました"
+        with self._reader_locks[reader.name]:   # 同じモデルへの呼び出しは、決めた間隔を空けて順に始める
+            wait = reader.min_interval - (time.monotonic() - self._last_call.get(reader.name, 0.0))
+            if wait > 0:
+                self._cancel.wait(wait)
+            self._last_call[reader.name] = time.monotonic()
         try:
-            return reader, as_reading(self.call(reader, shot.path)), ""
+            return shot, reader, as_reading(self.call(reader, shot.path)), ""
         except ExtractError as error:
-            return reader, None, str(error)
+            return shot, reader, None, str(error)
         except Exception as error:  # noqa: BLE001 - 1モデルの失敗でジョブ全体は止めない
-            return reader, None, f"{reader.name}: 想定外のエラー({type(error).__name__})"
+            return shot, reader, None, f"{reader.name}: 想定外のエラー({type(error).__name__})"
+
+    def _read_all(self, conn, job: Job, work: list[tuple[Shot, list[Reader]]]) -> None:
+        """(画像, モデル) の組を並行で読む。DBへの書き込みは、このスレッドだけで行う。"""
+        left = {shot.file: len(todo) for shot, todo in work}
+        pairs = [(shot, reader) for shot, todo in work for reader in todo]
+        if not pairs:
+            return
+        workers = self.parallel_images * max(1, max(len(todo) for _, todo in work))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(self._read, reader, shot) for shot, reader in pairs]
+            for future in as_completed(futures):
+                shot, reader, names, error = future.result()
+                if error == "中止しました":
+                    continue
+                job.requests += 1
+                save_reading(conn, job.event, shot.file, reader, names, error)
+                if error:
+                    job.errors.append(f"{shot.file}: {error}")
+                left[shot.file] -= 1
+                if not left[shot.file]:
+                    job.done += 1
+                job.current = f"{shot.strategy} {shot.file}"
+        if self._cancel.is_set():
+            job.state = "cancelled"
+
+    def _race(self, conn, job: Job) -> str:
+        # 一度決めたコースは変えない(あとから読んだ画像でコースが入れ替わり、同じスキルが二重に登録されるのを防ぐ)
+        saved = conn.execute("SELECT race FROM events WHERE event = ?", (job.event,)).fetchone()
+        return job.race or (saved["race"] if saved and saved["race"] else "") or detect_race(conn, job.event)
+
+    def _decide_council(self, conn, job: Job) -> list[tuple[Shot, list[Reader]]]:
+        """1次の読み取りを見て、会議に回す画像を決める。決めた内容はDBに残す(やり直しても変わらない)。"""
+        ok, council = read_state(conn, job.event)
+        others = [r for r in self.readers if r.name != self.primary]
+        imported = {r["source_file"] for r in conn.execute(
+            "SELECT DISTINCT source_file FROM skills WHERE event = ? AND source_csv != 'guide_app'", (job.event,))}
+        attempted = {r["source_file"]: r for r in conn.execute(
+            "SELECT source_file, names, error FROM readings WHERE event = ? AND reader = ?", (job.event, self.primary))}
+        work = []
+        for shot in list_shots(self.inbox, job.event):
+            row = attempted.get(shot.file)
+            if shot.file in imported or row is None:
+                continue
+            if council.get(shot.file) is None:
+                reading = as_reading(json.loads(row["names"])) if not row["error"] else None
+                reason = council_reason(shot, job.race, reading, self.master, self.spot_check)
+                council[shot.file] = int(bool(reason))
+                with conn:
+                    conn.execute(
+                        """INSERT INTO images (event, source_file, council, council_reason) VALUES (?, ?, ?, ?)
+                           ON CONFLICT (event, source_file) DO UPDATE SET council = excluded.council, council_reason = excluded.council_reason""",
+                        (job.event, shot.file, council[shot.file], reason))
+            if council[shot.file] == 1:
+                job.council += 1
+                todo = [r for r in others if (shot.file, r.name) not in ok]
+                if todo:
+                    work.append((shot, todo))
+        return work
 
     def _run(self, job: Job, work: list[tuple[Shot, list[Reader]]]) -> None:
         try:
             with self.connect() as conn:
-                with ThreadPoolExecutor(max_workers=max(1, len(self.readers))) as pool:
-                    for shot, todo in work:
-                        if self._cancel.is_set():
-                            job.state = "cancelled"
-                            break
-                        job.current = f"{shot.strategy} {shot.file}"
-                        for reader, names, error in pool.map(lambda r: self._read(r, shot), todo):
-                            job.requests += 1
-                            save_reading(conn, job.event, shot.file, reader, names, error)
-                            if error:
-                                job.errors.append(f"{shot.file}: {error}")
-                        job.done += 1
+                job.stage = "1次の読み取り" if self.primary else "読み取り"
+                self._read_all(conn, job, work)
+                if self.primary and job.state == "running":
+                    job.race = self._race(conn, job)   # 食い違いの判定にコースを使う。読めていなければ後段で止まる
+                    more = self._decide_council(conn, job)
+                    job.stage = f"会議(全モデル)で読み取り: {len(more)}枚"
+                    job.total += len(more)
+                    self._read_all(conn, job, more)
                 # 読み取りが終わってから行を作る(コースをイベント全体の多数決で決めるため)。読み取り済みの分だけなら呼び出しなしで済む
-                job.current = "結果を突き合わせています"
-                # 一度決めたコースは変えない(あとから読んだ画像でコースが入れ替わり、同じスキルが二重に登録されるのを防ぐ)
-                saved = conn.execute("SELECT race FROM events WHERE event = ?", (job.event,)).fetchone()
-                job.race = job.race or (saved["race"] if saved and saved["race"] else "") or detect_race(conn, job.event)
+                job.current, job.stage = "", "結果の突き合わせ"
+                job.race = self._race(conn, job)
                 if not job.race:
                     raise ExtractError("画像からコースを読み取れませんでした。レースを選んで、もう一度「読み取りを開始」を押してください(読み取り済みの画像は呼び直しません)")
                 with conn:
                     conn.execute(
                         "INSERT INTO events (event, race) VALUES (?, ?) ON CONFLICT (event) DO UPDATE SET race = excluded.race",
                         (job.event, job.race))
+                names = [r.name for r in self.readers]
+                ok, council = read_state(conn, job.event)
                 for shot in list_shots(self.inbox, job.event):
-                    result = apply_votes(conn, self.master, job.event, job.race, shot, [r.name for r in self.readers])
+                    # 1次だけで通した画像は、1次のモデルの読み取りだけで行を作る
+                    voters = names if not self.primary or council.get(shot.file) == 1 else [self.primary]
+                    result = apply_votes(conn, self.master, job.event, job.race, shot, voters)
                     job.rows += result["rows"]
                     job.warnings += bool(result["warnings"])
-                if self.auto_confirm and len(self.readers) >= 2:
+                if self.auto_confirm and len(self.readers) >= 2 and job.state == "running":
                     job.auto_ok, job.auto_rejected = auto_decide(conn, self.master, job.event, self.get_published())
             if job.state == "running":
                 job.state = "finished"

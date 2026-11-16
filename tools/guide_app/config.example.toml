@@ -47,6 +47,15 @@ import_interval = 300
 # backup_dir = "/home/katao/uma-guide-data/guide_app/backups"
 # backup_keep = 14
 
+# 同時に読む画像の枚数。増やすと速くなるが、回数制限に当たりやすくなる
+# parallel_images = 3
+
+# 2段階の読み取り: [[readers]] のどれか1つに primary = true を付けると、まずそのモデルだけで全画像を読み、
+# 次に当てはまる画像だけを全モデル(会議)で読む。
+#   マスタにない名前がある / 撮影時の設定(脚質・区分・コース)と食い違う / 1次のモデルが読めなかった / スキルが0件
+# spot_check は、1次を通った画像のうち何枚に1枚を会議にも回すか(1次のモデルの間違いの量を測るため。0で行わない)
+# spot_check = 5
+
 # 撮影画像の置き場所。<イベント>/<脚質>/<区分>/ の形で入っている場所
 # inbox_dir = "/home/katao/uma-guide-data/screenshots/inbox"
 
@@ -61,6 +70,7 @@ import_interval = 300
 # model = "gemini-3.5-flash-lite"
 # key_file = "~/.config/uma-tool/gemini_api_key"
 # min_interval = 5        # 無料枠の回数制限に当たるときは、呼び出しの間隔(秒)を空ける
+# primary = true          # 2段階の読み取りで、最初に全画像を読むモデルにする
 
 # キーを専用のヘッダーで渡すゲートウェイ(LiteLLMの前段など)は key_header でヘッダー名を指定する
 # [[readers]]

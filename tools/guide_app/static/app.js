@@ -105,6 +105,7 @@ function captureCards(ex) {
     : `<span style="color:var(--warn)">読み取りに使うモデルが未設定です。config.toml に [[readers]] を書いてください</span>`;
   const running = ex.job && ex.job.state === "running";
   return `<div class="card"><h2>撮影済み・未抽出</h2><div class="small muted">${readers}
+      ・ 読み方: <strong>${ex.primary ? `2段階(まず ${esc(ex.primary)} で全部読み、怪しい画像${ex.spot_check ? `と${ex.spot_check}枚に1枚の抜き取り` : ""}だけ全モデルで読む)` : "全モデルで全部読む"}</strong>
       ・ 自動確定: <strong>${ex.auto_confirm ? "オン(多数決の結果をそのままOK/却下にする)" : "オフ(人が確認する)"}</strong></div>
     ${list.map((c) => {
       const m = /^(\S+) (芝|ダート) (\d{4})m$/.exec(c.race || "") || [];
@@ -143,6 +144,7 @@ function jobHtml(job) {
   const label = { running: "読み取り中", finished: "読み取り完了", cancelled: "中止しました", failed: "エラーで停止" }[job.state];
   return `<div class="card">
     <div class="evhead"><div><strong>${label}: ${esc(job.event)}</strong>
+      ${job.state === "running" && job.stage ? `<span class="chip">${esc(job.stage)}</span>` : ""}${job.council ? `<span class="chip">全モデルで読んだ画像 ${job.council}枚</span>` : ""}
       <span class="muted small">${esc(job.race)} ・ 画像 ${job.done}/${job.total} ・ 呼び出し ${job.requests}回 ・ ${job.rows}行${job.auto_ok || job.auto_rejected ? `(自動OK ${job.auto_ok}・自動却下 ${job.auto_rejected})` : ""}${job.warnings ? ` ・ <span style="color:var(--warn)">設定と食い違う画像 ${job.warnings}枚</span>` : ""}${job.current ? " ・ " + esc(job.current) : ""}</span></div>
       ${job.state === "running" ? `<button class="btn sm" data-act="extract-cancel">中止</button>` : ""}</div>
     <div class="bar"><i style="width:${pct}%;background:${job.state === "failed" ? "var(--warn)" : "var(--ok)"}"></i></div>
@@ -175,7 +177,10 @@ async function startExtract(event, row) {
   const race = get("track") ? `${get("track")} ${get("surface")} ${get("distance")}m` : "";
   try {
     const est = await api("/api/extract", { event, race, dry_run: true });
-    const msg = `${event}(${race || "コースは画像から自動で読む"})を読み取ります。\n\n画像 ${est.images}枚 × ${est.readers.length}モデル = 呼び出し ${est.requests}回\n` +
+    const count = est.primary
+      ? `まず ${est.primary} で ${est.requests}回。そのあと、怪しい画像と抜き取り検査の分だけ全モデルで読みます\n`
+      : `画像 ${est.images}枚 × ${est.readers.length}モデル = 呼び出し ${est.requests}回\n`;
+    const msg = `${event}(${race || "コースは画像から自動で読む"})を読み取ります。\n\n${count}` +
       est.readers.map((r) => `・${r.name}(${r.model})`).join("\n") + (est.auto_confirm ? "\n\n自動確定オン: 多数決の結果をそのままOK/却下にします。" : "") +
       (est.requests ? "" : "\n\n新しく読む画像はありません。読み取り済みの結果を突き合わせ直します。") + "\n\n開始してよろしいですか?";
     if (!confirm(msg)) return;

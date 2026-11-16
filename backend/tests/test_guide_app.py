@@ -533,6 +533,59 @@ class GuideAppExtractTests(unittest.TestCase):
         self.assertIn("追込 超おすすめ", capture["missing"])
         self.assertNotIn("逃げ 超おすすめ", capture["missing"])
 
+    def two_stage(self, spot_check=0, auto=True):
+        readers = [extract.Reader(r.name, r.base_url, r.model, key_file=r.key_file, primary=(r.name == "gemini")) for r in self.readers]
+        return extract.Extractor(self.connect, self.inbox, readers, MASTER, call=self.fake_call, auto_confirm=auto,
+                                 spot_check=spot_check, parallel_images=2)
+
+    def test_two_stage_sends_only_doubtful_images_to_the_council(self):
+        # a1.png は gemini の読みが全部マスタにある → 1次だけで通す。b1.png はマスタにない名前 → 会議へ
+        self.answers[("gemini", "b1.png")] = ["末脚", "謎スキル"]
+        ex = self.two_stage()
+        self.assertEqual(ex.estimate(self.EV)["requests"], 3)          # 最初は1次のモデルの分だけ
+        job = ex.start(self.EV, wait=True)
+        self.assertEqual((job.state, job.council), ("finished", 1))
+        self.assertEqual(sorted(self.calls), sorted([("gemini", "a1.png"), ("gemini", "a2.png"), ("gemini", "b1.png"),
+                                                     ("claude", "b1.png"), ("grok", "b1.png")]))
+        rows = self.rows()
+        self.assertEqual((rows[("a1.png", "末脚")]["readers"], rows[("a1.png", "末脚")]["status"]), (1, "ready"))
+        self.assertEqual(rows[("a1.png", "左回り◎")]["status"], "ready")    # 1次だけの画像では◎も通す
+        with self.connect() as conn:
+            b1 = {r["skill"]: (r["votes"], r["readers"], r["status"]) for r in conn.execute("SELECT * FROM skills WHERE strategy = '先行'")}
+            pending = extract.captures(conn, self.inbox, ["gemini", "claude", "grok"], "gemini")[0]["pending"]
+            reason = conn.execute("SELECT council_reason FROM images WHERE source_file = 'b1.png'").fetchone()[0]
+        self.assertEqual(b1, {"末脚": (3, 3, "ready"), "謎スキル": (1, 3, "rejected")})   # 会議の多数決で決まる
+        self.assertEqual((pending, reason), (0, "マスタにない名前がある"))
+        self.calls = []
+        ex.start(self.EV, wait=True)                                   # やり直しても呼び直さない
+        self.assertEqual(self.calls, [])
+
+    def test_two_stage_escalates_mismatch_failure_and_spot_checks(self):
+        self.tab = {"a1.png": "先行"}                 # 設定と食い違う
+        self.failing = {("gemini", "a2.png")}        # 1次が読めない
+        job = self.two_stage().start(self.EV, wait=True)
+        with self.connect() as conn:
+            got = {r["source_file"]: (r["council"], r["council_reason"]) for r in conn.execute("SELECT * FROM images")}
+        self.assertEqual(got["a1.png"], (1, "撮影時の設定と食い違う"))
+        self.assertEqual(got["a2.png"], (1, "1次のモデルが読めなかった"))
+        self.assertEqual(got["b1.png"][0], 0)
+        self.assertEqual(job.council, 2)
+        self.assertEqual(self.rows()[("a2.png", "左回り○")]["votes"], 2)   # 1次が読めなくても、会議の2モデルで行ができる
+        picked = [f for f in ("x%d.png" % i for i in range(200)) if extract.spot_checked(f, 5)]
+        self.assertTrue(20 <= len(picked) <= 60)                           # おおよそ5枚に1枚
+        self.assertFalse(extract.spot_checked("a.png", 0))
+
+    def test_parallel_reading_respects_reader_interval(self):
+        slow = [extract.Reader("gemini", "https://example.invalid", "m", key_file=self.readers[0].key_file, min_interval=0.05)]
+        started = []
+        def call(reader, image):
+            started.append(extract.time.monotonic())
+            return {"course": self.RACE, "strategy": "", "sections": [{"tier": "", "skills": ["末脚"]}]}
+        extract.Extractor(self.connect, self.inbox, slow, MASTER, call=call, parallel_images=3).start(self.EV, wait=True)
+        gaps = [b - a for a, b in zip(sorted(started), sorted(started)[1:])]
+        self.assertEqual(len(started), 3)
+        self.assertTrue(all(g >= 0.04 for g in gaps), gaps)
+
     def test_similar_names_are_never_merged_into_one_vote(self):
         # 似た名前を同じスキルの票として数えると、○と◎の取り違えが多数決を通ってしまう
         rows = extract.tally({"a": ["左回り○"], "b": ["左回り◎"], "c": ["左回りO"]}, MASTER)

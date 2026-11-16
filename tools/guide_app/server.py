@@ -41,7 +41,8 @@ class App:
         db.connect(config.db_path).close()  # 起動時にテーブルを用意
         self.master_info: dict = {"source": "手元のファイル", "skills": len(self.master.names), "loaded_at": "", "error": None}
         self.extractor = extract.Extractor(self.connect, config.inbox_dir, list(config.readers), self.master,
-                                           auto_confirm=config.auto_confirm, get_published=lambda: self.published)
+                                           auto_confirm=config.auto_confirm, get_published=lambda: self.published,
+                                           parallel_images=config.parallel_images, spot_check=config.spot_check)
         self.automation = automation.Automation(self)   # 見回りは start_automation で始める(ここでは何も動かさない)
 
     @contextmanager
@@ -274,7 +275,8 @@ class Handler(BaseHTTPRequestHandler):
     def get_extract(self, query):
         app = self.app
         with app.connect() as conn:
-            captures = extract.captures(conn, app.config.inbox_dir, [r.name for r in app.config.readers])
+            captures = extract.captures(conn, app.config.inbox_dir, [r.name for r in app.config.readers],
+                                        extract.primary_name(app.config.readers))
             hidden = {r["event"] for r in conn.execute("SELECT event FROM events WHERE hidden = 1")}
             stats = extract.reader_stats(conn, [r.name for r in app.config.readers])
         self.send_json({
@@ -283,6 +285,8 @@ class Handler(BaseHTTPRequestHandler):
             "readers": [{"name": r.name, "model": r.model} for r in app.config.readers],
             "stats": stats,
             "auto_confirm": app.config.auto_confirm,
+            "primary": extract.primary_name(app.config.readers),
+            "spot_check": app.config.spot_check,
             "tracks": extract.TRACKS,
         })
 

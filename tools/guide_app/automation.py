@@ -310,7 +310,7 @@ class Automation:
         hidden = hidden_events(conn)
         readers = digest([[r.name, r.model] for r in cfg.readers])
         started = False
-        for cap in extract.captures(conn, cfg.inbox_dir, names):
+        for cap in extract.captures(conn, cfg.inbox_dir, names, extract.primary_name(cfg.readers)):
             event = cap["event"]
             if event in hidden:
                 continue
@@ -381,7 +381,8 @@ class Automation:
             # サイトの内容が分からない・古いまま送ると、公開済みの行まで送ってしまう
             notes.append("自動公開: サイトの内容をGitHubから読めていないため、保留しています")
             return
-        captures = {c["event"]: c for c in extract.captures(conn, cfg.inbox_dir, [r.name for r in cfg.readers])}
+        captures = {c["event"]: c for c in extract.captures(conn, cfg.inbox_dir, [r.name for r in cfg.readers],
+                                                            extract.primary_name(cfg.readers))}
         hidden = hidden_events(conn)
         events = [r["event"] for r in conn.execute("SELECT DISTINCT event FROM skills ORDER BY event DESC")]
         for event in events:

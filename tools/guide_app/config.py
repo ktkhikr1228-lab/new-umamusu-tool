@@ -29,6 +29,8 @@ class Config:
     inbox_dir: Path = Path("inbox")  # 撮影画像の置き場所(<イベント>/<脚質>/<区分>/)
     readers: tuple[Reader, ...] = ()  # 読み取りに使うモデル(2つ以上で多数決)
     auto_confirm: bool = False  # 多数決の結果をそのままOK/却下にする
+    parallel_images: int = 3    # 同時に読む画像の枚数
+    spot_check: int = 5         # 2段階の読み取りで、1次を通った画像のうち何枚に1枚を会議にも回すか(0で行わない)
     skill_master_url: str = ""  # 空ならGitHub mainの skill_master.json
     allowed_hosts: tuple[str, ...] = ()  # 画面を開けるホスト名の追加分(IPアドレス・uma-pi・*.ts.net は常に可)
     # ---- 自動処理(automation.py)。どれも既定はオフ ----
@@ -66,7 +68,10 @@ def _readers(raw: object, base: Path) -> tuple[Reader, ...]:
             key_env=str(item.get("key_env", "")),
             key_header=_header_name(item.get("key_header", "Authorization"), item["name"]),
             min_interval=float(item.get("min_interval", 0)), timeout=int(item.get("timeout", 120)),
+            primary=bool(item.get("primary", False)),
         ))
+    if sum(r.primary for r in readers) > 1:
+        raise ValueError("[[readers]] の primary = true は1つだけにしてください")
     if len({r.name for r in readers}) != len(readers):
         raise ValueError("[[readers]] の name が重複しています")
     return tuple(readers)
@@ -103,6 +108,8 @@ def load_config(path: Path | None = None, overrides: dict | None = None) -> Conf
         inbox_dir=_path(raw.get("inbox_dir", screenshots_dir / "inbox"), base),
         readers=_readers(raw.get("readers"), base),
         auto_confirm=bool(raw.get("auto_confirm", False)),
+        parallel_images=int(raw.get("parallel_images", 3)),
+        spot_check=int(raw.get("spot_check", 5)),
         skill_master_url=str(raw.get("skill_master_url", "")),
         allowed_hosts=tuple(str(h) for h in raw.get("allowed_hosts", [])),
         auto_extract=bool(raw.get("auto_extract", False)),

@@ -98,6 +98,11 @@ MIGRATIONS = [
     """
     ALTER TABLE skills ADD COLUMN touched INTEGER NOT NULL DEFAULT 0;
     """,
+    # v9: 2段階の読み取り。council: 1=会議(全モデル)に回す / 0=1次のモデルだけで通す / NULL=未判定
+    """
+    ALTER TABLE images ADD COLUMN council INTEGER;
+    ALTER TABLE images ADD COLUMN council_reason TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 
