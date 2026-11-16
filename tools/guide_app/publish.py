@@ -26,6 +26,7 @@ import publish_reviewed_race_data as publisher  # noqa: E402
 
 REPO = dispatcher.REPO
 RACE_DATA_URL = f"https://raw.githubusercontent.com/{REPO}/main/frontend/src/data/race_data.json"
+MASTER_URL = f"https://raw.githubusercontent.com/{REPO}/main/frontend/src/data/skill_master.json"
 LOCAL_RACE_DATA = REPO_ROOT / "frontend" / "src" / "data" / "race_data.json"
 CHUNK_BYTES = 46_000  # 1回の依頼の上限(48KB)より少し小さく
 TIERS = ("super_recommended", "recommended")
@@ -93,6 +94,21 @@ class PublishedSource:
                 self.current = Published(data, source, now)
             self.error = error
         return self.current
+
+
+def refresh_master(master: SkillMaster, url: str = MASTER_URL, opener=urllib.request.urlopen) -> dict:
+    """スキルマスタをGitHubのmainの内容に入れ替える。取得できなければ今の内容のまま。
+
+    公開時の検証はmainのマスタで行われるので、確認アプリも同じものを見るようにする。
+    """
+    info = {"source": "手元のファイル", "skills": len(master.names), "loaded_at": time.strftime("%Y-%m-%d %H:%M:%S"), "error": None}
+    try:
+        with opener(url, timeout=20) as response:
+            master.update(json.loads(response.read().decode("utf-8")))
+        info.update(source="GitHub main", skills=len(master.names))
+    except Exception as exc:  # noqa: BLE001 - ネットワーク不調でも手元のマスタで続ける
+        info["error"] = f"スキルマスタをGitHubから取得できませんでした: {exc}"
+    return info
 
 
 @dataclass

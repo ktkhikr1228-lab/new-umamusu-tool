@@ -20,6 +20,12 @@ import_interval = 300
 # token_file = "~/.config/uma-tool/github_token"
 
 # ---- スクショの読み取り(複数モデルの多数決) ----
+# 多数決の結果をそのまま採用する(既定はfalse=人が確認する)。
+#   過半数のモデルが読み、マスタにあるスキル → 自動でOK
+#   1モデルだけが読み、マスタにないスキル   → 自動で却下
+#   それ以外と、撮影時の設定と中身が食い違う画像 → 人が確認する
+# auto_confirm = true
+
 # 撮影画像の置き場所。<イベント>/<脚質>/<区分>/ の形で入っている場所
 # inbox_dir = "/home/katao/uma-guide-data/screenshots/inbox"
 

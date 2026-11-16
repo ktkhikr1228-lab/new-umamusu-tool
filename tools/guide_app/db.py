@@ -82,6 +82,10 @@ MIGRATIONS = [
         PRIMARY KEY (event, source_file, reader)
     );
     """,
+    # v6: フォルダ(撮影時の設定)と画像の中身の食い違い
+    """
+    ALTER TABLE images ADD COLUMN warning TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 

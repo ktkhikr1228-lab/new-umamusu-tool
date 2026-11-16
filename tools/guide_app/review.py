@@ -127,8 +127,9 @@ def group(conn: sqlite3.Connection, master: SkillMaster, event: str, race: str, 
     )]
     if not rows:
         raise ReviewError("該当するデータがありません")
-    reviewed = {r["source_file"]: r["reviewed_at"] for r in conn.execute(
-        "SELECT source_file, reviewed_at FROM images WHERE event = ?", (event,))}
+    image_rows = {r["source_file"]: r for r in conn.execute(
+        "SELECT source_file, reviewed_at, warning FROM images WHERE event = ?", (event,))}
+    reviewed = {f: r["reviewed_at"] for f, r in image_rows.items()}
     reasons = attention_reasons(rows, master, published)
 
     images: dict[str, dict] = {}
@@ -138,7 +139,8 @@ def group(conn: sqlite3.Connection, master: SkillMaster, event: str, race: str, 
         r["suggestions"] = [] if r["known"] else master.suggest(r["skill"])
         r["published"] = published.status(race, strategy, r["skill"], r["tier"]) if published else "new"
         image = images.setdefault(r["source_file"], {
-            "file": r["source_file"], "reviewed_at": reviewed.get(r["source_file"]), "rows": []})
+            "file": r["source_file"], "reviewed_at": reviewed.get(r["source_file"]),
+            "warning": image_rows[r["source_file"]]["warning"] if r["source_file"] in image_rows else "", "rows": []})
         image["rows"].append(r)
     for image in images.values():
         tiers = {r["tier"] for r in image["rows"] if r["status"] != "rejected"}

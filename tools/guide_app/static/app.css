@@ -79,6 +79,7 @@ details.card summary { cursor: pointer; }
 .shot .cap button:disabled { opacity: .4; }
 .imgtier { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; font-size: 14px; }
+.imgwarn { background: var(--warnbg); color: var(--warn); border: 1px solid var(--warn); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; font-size: 14px; }
 .rows { display: flex; flex-direction: column; gap: 8px; }
 .row { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; }

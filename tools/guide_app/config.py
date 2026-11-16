@@ -28,6 +28,8 @@ class Config:
     race_data_url: str = ""  # 空ならGitHub mainの race_data.json
     inbox_dir: Path = Path("inbox")  # 撮影画像の置き場所(<イベント>/<脚質>/<区分>/)
     readers: tuple[Reader, ...] = ()  # 読み取りに使うモデル(2つ以上で多数決)
+    auto_confirm: bool = False  # 多数決の結果をそのままOK/却下にする
+    skill_master_url: str = ""  # 空ならGitHub mainの skill_master.json
 
 
 def _path(value: object, base: Path) -> Path:
@@ -84,4 +86,6 @@ def load_config(path: Path | None = None, overrides: dict | None = None) -> Conf
         race_data_url=str(raw.get("race_data_url", "")),
         inbox_dir=_path(raw.get("inbox_dir", screenshots_dir / "inbox"), base),
         readers=_readers(raw.get("readers"), base),
+        auto_confirm=bool(raw.get("auto_confirm", False)),
+        skill_master_url=str(raw.get("skill_master_url", "")),
     )

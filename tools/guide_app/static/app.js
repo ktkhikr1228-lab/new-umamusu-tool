@@ -60,7 +60,7 @@ function reviewLink(event, race, strategy) {
 
 // ---------- ホーム ----------
 async function showHome() {
-  const [{ events, last_import }, ex] = await Promise.all([api("/api/overview"), api("/api/extract")]);
+  const [{ events, last_import, master }, ex] = await Promise.all([api("/api/overview"), api("/api/extract")]);
   const imp = last_import
     ? `最終取り込み ${esc(last_import.at)}(追加 ${last_import.added}行)` +
       (last_import.problems.length ? `<ul class="problems">${last_import.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "")
@@ -68,6 +68,8 @@ async function showHome() {
   $app.innerHTML = `
     <div class="card small muted">${imp}
       <button class="btn sm" data-act="import-now" style="margin-left:8px">今すぐ取り込む</button>
+      <div>スキルマスタ: ${esc(master.source)}(${master.skills}件${master.loaded_at ? "・" + esc(master.loaded_at) + " 取得" : ""})
+        ${master.error ? `<span style="color:var(--warn)">${esc(master.error)}</span>` : ""}</div>
     </div>
     <div id="job">${jobHtml(ex.job)}</div>
     ${captureCards(ex)}
@@ -79,13 +81,14 @@ async function showHome() {
 // ---------- 抽出(複数モデルで読み取り) ----------
 function captureCards(ex) {
   const list = ex.captures.filter((c) => c.pending > 0);
-  if (!list.length) return "";
+  if (!list.length) return statsHtml(ex) ? `<div class="card">${statsHtml(ex)}</div>` : "";
   const readers = ex.readers.length
     ? `読み取りに使うモデル: ${ex.readers.map((r) => `${esc(r.name)}(${esc(r.model)})`).join("・")}` +
       (ex.readers.length < 2 ? " ※1つだけなので多数決にはなりません" : "")
     : `<span style="color:var(--warn)">読み取りに使うモデルが未設定です。config.toml に [[readers]] を書いてください</span>`;
   const running = ex.job && ex.job.state === "running";
-  return `<div class="card"><h2>撮影済み・未抽出</h2><div class="small muted">${readers}</div>
+  return `<div class="card"><h2>撮影済み・未抽出</h2><div class="small muted">${readers}
+      ・ 自動確定: <strong>${ex.auto_confirm ? "オン(多数決の結果をそのままOK/却下にする)" : "オフ(人が確認する)"}</strong></div>
     ${list.map((c) => {
       const m = /^(\S+) (芝|ダート) (\d{4})m$/.exec(c.race || "") || [];
       const cells = STRATEGIES.map((s) => {
@@ -97,12 +100,24 @@ function captureCards(ex) {
         <div><strong>${esc(c.event)}</strong> <span class="muted small">画像 ${c.images}枚(未抽出 ${c.pending})・ ${cells}</span>
           ${c.missing.length ? `<div class="small" style="color:var(--warn)">撮り忘れの可能性: ${esc(c.missing.join("、"))}</div>` : ""}</div>
         <div class="cap-form">
-          <select data-f="track">${ex.tracks.map((t) => `<option ${t === m[1] ? "selected" : ""}>${t}</option>`).join("")}</select>
+          <select data-f="track"><option value="">コースは画像から自動で読む</option>${ex.tracks.map((t) => `<option ${t === m[1] ? "selected" : ""}>${t}</option>`).join("")}</select>
           <select data-f="surface"><option ${m[2] === "芝" ? "selected" : ""}>芝</option><option ${m[2] === "ダート" ? "selected" : ""}>ダート</option></select>
           <input type="text" data-f="distance" inputmode="numeric" size="5" placeholder="距離" value="${esc(m[3] || "")}">m
           <button class="btn primary" data-act="extract" data-event="${esc(c.event)}" ${running || !ex.readers.length ? "disabled" : ""}>読み取りを開始</button>
         </div></div>`;
-    }).join("")}</div>`;
+    }).join("")}${statsHtml(ex)}</div>`;
+}
+
+function statsHtml(ex) {
+  const rows = (ex.stats || []).filter((s) => s.calls > 0);
+  if (!rows.length) return "";
+  return `<details class="small" style="margin-top:10px"><summary class="muted" style="cursor:pointer">モデルごとの成績</summary>
+    <table class="grid"><tr><th>モデル</th><th class="n">呼び出し</th><th class="n">失敗</th>
+      <th class="n" title="そのモデルだけが読んだスキル(うち却下された数)">単独で読んだ(うち却下)</th>
+      <th class="n" title="OKになったスキルのうち、そのモデルが読めていなかった数">読み落とし</th></tr>
+    ${rows.map((s) => `<tr><td>${esc(s.name)}</td><td class="n">${s.calls}</td><td class="n">${s.errors}</td>
+      <td class="n">${s.solo}(${s.solo_rejected})</td><td class="n">${s.missed}</td></tr>`).join("")}</table>
+    <div class="muted">「単独で読んだ」のうち却下が多いモデルは思い込みが多く、「読み落とし」が多いモデルは見落としが多いモデルです。</div></details>`;
 }
 
 function jobHtml(job) {
@@ -111,7 +126,7 @@ function jobHtml(job) {
   const label = { running: "読み取り中", finished: "読み取り完了", cancelled: "中止しました", failed: "エラーで停止" }[job.state];
   return `<div class="card">
     <div class="evhead"><div><strong>${label}: ${esc(job.event)}</strong>
-      <span class="muted small">${esc(job.race)} ・ 画像 ${job.done}/${job.total} ・ 呼び出し ${job.requests}回 ・ ${job.rows}行${job.current ? " ・ " + esc(job.current) : ""}</span></div>
+      <span class="muted small">${esc(job.race)} ・ 画像 ${job.done}/${job.total} ・ 呼び出し ${job.requests}回 ・ ${job.rows}行${job.auto_ok || job.auto_rejected ? `(自動OK ${job.auto_ok}・自動却下 ${job.auto_rejected})` : ""}${job.warnings ? ` ・ <span style="color:var(--warn)">設定と食い違う画像 ${job.warnings}枚</span>` : ""}${job.current ? " ・ " + esc(job.current) : ""}</span></div>
       ${job.state === "running" ? `<button class="btn sm" data-act="extract-cancel">中止</button>` : ""}</div>
     <div class="bar"><i style="width:${pct}%;background:${job.state === "failed" ? "var(--warn)" : "var(--ok)"}"></i></div>
     ${job.errors.length ? `<details class="small"><summary style="color:var(--warn);cursor:pointer">読めなかった呼び出し ${job.errors.length}件(もう一度「読み取りを開始」で、失敗した分だけやり直せます)</summary>
@@ -140,12 +155,12 @@ function watchJob(job) {
 
 async function startExtract(event, row) {
   const get = (f) => row.querySelector(`[data-f="${f}"]`).value.trim();
-  const race = `${get("track")} ${get("surface")} ${get("distance")}m`;
+  const race = get("track") ? `${get("track")} ${get("surface")} ${get("distance")}m` : "";
   try {
     const est = await api("/api/extract", { event, race, dry_run: true });
-    if (!est.requests) return toast("読み取る画像がありません");
-    const msg = `${event}(${race})を読み取ります。\n\n画像 ${est.images}枚 × ${est.readers.length}モデル = 呼び出し ${est.requests}回\n` +
-      est.readers.map((r) => `・${r.name}(${r.model})`).join("\n") + "\n\n開始してよろしいですか?";
+    const msg = `${event}(${race || "コースは画像から自動で読む"})を読み取ります。\n\n画像 ${est.images}枚 × ${est.readers.length}モデル = 呼び出し ${est.requests}回\n` +
+      est.readers.map((r) => `・${r.name}(${r.model})`).join("\n") + (est.auto_confirm ? "\n\n自動確定オン: 多数決の結果をそのままOK/却下にします。" : "") +
+      (est.requests ? "" : "\n\n新しく読む画像はありません。読み取り済みの結果を突き合わせ直します。") + "\n\n開始してよろしいですか?";
     if (!confirm(msg)) return;
     await api("/api/extract", { event, race });
     showHome();
@@ -227,7 +242,7 @@ async function loadGroup(keepFile) {
 
 const isMain = (r) => !r.known || r.attention.length > 0;
 // サイトに同じ区分で出ている行は見直さなくてよい
-const needsWork = (im) => im.rows.some((r) => isMain(r) && r.status === "draft")
+const needsWork = (im) => (im.warning && !im.reviewed_at) || im.rows.some((r) => isMain(r) && r.status === "draft")
   || (!im.reviewed_at && im.rows.some((r) => r.status === "draft" && r.published !== "same"));
 
 function visibleImages() {
@@ -256,7 +271,7 @@ function renderReview() {
   </div>
   <div class="strip">
     ${list.map((x, i) => {
-      const warn = x.rows.some((r) => isMain(r) && r.status === "draft");
+      const warn = x.warning || x.rows.some((r) => isMain(r) && r.status === "draft");
       const t = x.tier ? (x.tier === "super_recommended" ? "超" : "お") : "混";
       return `<button class="thumb ${x.reviewed_at ? "done" : ""} ${i === state.cur ? "cur" : ""} ${state.selected.has(x.file) ? "sel" : ""}"
         data-act="thumb" data-i="${i}" title="${esc(x.file)}">${i + 1}<span class="tt">${t}</span>${warn ? '<span class="dot"></span>' : ""}</button>`;
@@ -297,6 +312,8 @@ function imagePanel(im) {
   const pendingMain = main.filter((r) => r.status === "draft").length;
   const published = matched.filter((r) => r.published === "same").length;
   return `
+    ${im.warning ? `<div class="imgwarn">撮影時の設定と画像の中身が食い違っています: ${esc(im.warning)}<br>
+      <span class="small">区分の間違いは下の「この画像の区分」で直せます。脚質やコースが違う場合は、この画像の行を却下して撮り直してください。</span></div>` : ""}
     <div class="imgtier">この画像の区分 ${tierSelect("img-tier", null, im.tier, true)}
       <span class="muted small">撮影時の区分切り替え忘れを直すとき用</span></div>
     <div class="rows">

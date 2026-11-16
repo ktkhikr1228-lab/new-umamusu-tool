@@ -39,7 +39,9 @@ class App:
         self.last_import: dict | None = None
         self.published_source = publish.PublishedSource(config.race_data_url or publish.RACE_DATA_URL)
         db.connect(config.db_path).close()  # 起動時にテーブルを用意
-        self.extractor = extract.Extractor(self.connect, config.inbox_dir, list(config.readers), self.master)
+        self.master_info: dict = {"source": "手元のファイル", "skills": len(self.master.names), "loaded_at": "", "error": None}
+        self.extractor = extract.Extractor(self.connect, config.inbox_dir, list(config.readers), self.master,
+                                           auto_confirm=config.auto_confirm)
 
     @contextmanager
     def connect(self):
@@ -56,6 +58,11 @@ class App:
     def published_info(self) -> dict:
         p = self.published
         return {"source": p.source, "loaded_at": p.loaded_at, "skills": p.size, "error": self.published_source.error}
+
+    def refresh_remote(self) -> None:
+        """サイトの内容とスキルマスタを、GitHubのmainから読み直す。"""
+        self.published_source.refresh()
+        self.master_info = publish.refresh_master(self.master, self.config.skill_master_url or publish.MASTER_URL)
 
     def run_import(self) -> dict:
         with self.import_lock, self.connect() as conn:
@@ -158,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
     def get_overview(self, query):
         with self.app.connect() as conn:
             events = review.overview(conn, self.app.published)
-        self.send_json({"events": events, "last_import": self.app.last_import})
+        self.send_json({"events": events, "last_import": self.app.last_import, "master": self.app.master_info})
 
     def get_group(self, query):
         with self.app.connect() as conn:
@@ -242,7 +249,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"reset": count})
 
     def post_published_refresh(self, query):
-        self.app.published_source.refresh()
+        self.app.refresh_remote()
         self.send_json(self.app.published_info())
 
     def get_extract(self, query):
@@ -250,10 +257,13 @@ class Handler(BaseHTTPRequestHandler):
         with app.connect() as conn:
             captures = extract.captures(conn, app.config.inbox_dir, [r.name for r in app.config.readers])
             hidden = {r["event"] for r in conn.execute("SELECT event FROM events WHERE hidden = 1")}
+            stats = extract.reader_stats(conn, [r.name for r in app.config.readers])
         self.send_json({
             "captures": [c for c in captures if c["event"] not in hidden],
             "job": app.extractor.status(),
             "readers": [{"name": r.name, "model": r.model} for r in app.config.readers],
+            "stats": stats,
+            "auto_confirm": app.config.auto_confirm,
             "tracks": extract.TRACKS,
         })
 
@@ -261,7 +271,8 @@ class Handler(BaseHTTPRequestHandler):
         body = self.read_json()
         event, force = str(body["event"]), bool(body.get("force"))
         if body.get("dry_run"):
-            extract.validate_race(str(body.get("race", "")))
+            if str(body.get("race", "")).strip():
+                extract.validate_race(str(body["race"]))
             return self.send_json(self.app.extractor.estimate(event, force))
         job = self.app.extractor.start(event, str(body.get("race", "")), force)
         self.send_json(job.to_dict())
@@ -296,13 +307,13 @@ ROUTES = {
 def start_auto_import(app: App, interval: int) -> threading.Thread | None:
     """新しい抽出CSVを定期的に取り込む。"""
     if interval <= 0:
-        app.published_source.refresh()  # 自動取り込みなしでも、起動時に一度はサイトの内容を読む
+        app.refresh_remote()  # 自動取り込みなしでも、起動時に一度はサイトの内容とスキルマスタを読む
         return None
 
     def loop():
         while True:
             try:
-                app.published_source.refresh()
+                app.refresh_remote()
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
             try:

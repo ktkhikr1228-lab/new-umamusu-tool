@@ -18,6 +18,13 @@ class SkillMaster:
         self.names = list(names)
         self._by_key = {normalize(n): n for n in self.names}
 
+    def update(self, names: list[str]) -> None:
+        """中身を入れ替える。このオブジェクトを持っている全員に反映される。"""
+        if not isinstance(names, list) or not names or not all(isinstance(x, str) and x for x in names):
+            raise ValueError("スキルマスタの形式が想定と違います")
+        self.names = list(names)
+        self._by_key = {normalize(n): n for n in self.names}
+
     @classmethod
     def load(cls, path: Path) -> "SkillMaster":
         data = json.loads(Path(path).read_text(encoding="utf-8-sig"))

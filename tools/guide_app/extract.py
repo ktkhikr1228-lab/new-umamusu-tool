@@ -32,20 +32,19 @@ TRACKS = ("東京", "中山", "阪神", "京都", "中京", "新潟", "札幌", 
 RACE_RE = re.compile(rf"({'|'.join(TRACKS)}) (芝|ダート) ([0-9]{{4}})m")
 STRATEGY_ORDER = {"逃げ": 0, "先行": 1, "差し": 2, "追込": 3}
 
-PROMPT_LIST = (
-    "これはゲーム「ウマ娘」のトレーナーガイド画面です。画像に写っているスキル名を、上から順にすべて書き出してください。\n"
-    "- 画面の表記どおりに書く。○と◎は区別する\n"
-    "- スキル名以外(見出し、レース名、ボタン、説明文)は含めない\n"
-    "- 文字が途中で切れて読めないスキルは含めない\n"
-    '出力はJSONの配列だけにしてください。例: ["スキルA", "スキルB"]'
+PROMPT = (
+    "これはゲーム「ウマ娘」のトレーナーガイド画面のスクリーンショットです。次の内容を読み取り、JSONオブジェクトだけを出力してください。\n"
+    "- course: 画面上部のコース表記(例: 中山 芝 3600m)。読めなければ空文字\n"
+    "- strategy: 選択中(色が付いている)の脚質タブ。逃げ・先行・差し・追込のいずれか。分からなければ空文字\n"
+    "- sections: スキル一覧を、画面に写っている見出しごとに分けたもの。heading は見出しの文字"
+    "(「超おすすめスキル」「おすすめスキル」)。見出しが写っていない部分のスキルは heading を空文字にする\n"
+    "- skills: スキル名を上から順に、画面の表記どおりに。○と◎は区別する。"
+    "スキル名以外(レース名、ボタン、説明文)や、文字が切れて読めないものは含めない\n"
+    '例: {"course": "中山 芝 3600m", "strategy": "逃げ", '
+    '"sections": [{"heading": "超おすすめスキル", "skills": ["スキルA"]}, {"heading": "", "skills": ["スキルB"]}]}'
 )
-PROMPT_TIERED = (
-    "これはゲーム「ウマ娘」のトレーナーガイド画面です。画像に写っているスキル名を、見出しの区分ごとにすべて書き出してください。\n"
-    "- 「超おすすめスキル」の見出しの下にあるものは super_recommended、「おすすめスキル」の下にあるものは recommended\n"
-    "- 見出しが写っていないスキルは unknown\n"
-    "- 画面の表記どおりに書く。○と◎は区別する。スキル名以外は含めない\n"
-    '出力はJSONオブジェクトだけにしてください。例: {"super_recommended": ["スキルA"], "recommended": ["スキルB"], "unknown": []}'
-)
+COURSE_RE = re.compile(rf"({'|'.join(TRACKS)})\s*(芝|ダート)\s*([0-9]{{4}})\s*m")
+TIER_LABELS = {"super_recommended": "超おすすめ", "recommended": "おすすめ"}
 
 
 class ExtractError(ValueError):
@@ -154,49 +153,81 @@ def missing_cells(cells: dict) -> list[str]:
 
 
 # ---------- モデル呼び出し ----------
-def parse_names(text: str, tiered: bool) -> dict[str, list[str]]:
-    """モデルの返答からスキル名を取り出す。区分なしの場合は {"": [...]}。"""
+def _clean(items) -> list[str]:
+    seen, out = set(), []
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, str) and item.strip() and item.strip() not in seen:
+            seen.add(item.strip())
+            out.append(item.strip())
+    return out
+
+
+def heading_tier(heading: object) -> str:
+    text = str(heading or "")
+    if "超" in text:
+        return "super_recommended"
+    return "recommended" if "おすすめ" in text else ""
+
+
+def normalize_course(value: object) -> str:
+    match = COURSE_RE.search(str(value or ""))
+    return f"{match[1]} {match[2]} {match[3]}m" if match else ""
+
+
+def parse_reply(text: str) -> dict:
+    """モデルの返答を {"course", "strategy", "sections": [{"tier", "skills"}]} にそろえる。"""
     text = text.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
         text = fenced.group(1).strip()
-
-    def clean(items) -> list[str]:
-        seen, out = set(), []
-        for item in items if isinstance(items, list) else []:
-            if isinstance(item, str) and item.strip() and item.strip() not in seen:
-                seen.add(item.strip())
-                out.append(item.strip())
-        return out
-
-    opener, closer = ("{", "}") if tiered else ("[", "]")
-    start, end = text.find(opener), text.rfind(closer)
-    if start != -1 and end > start:
-        try:
-            data = json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            data = None
-        if tiered and isinstance(data, dict):
-            return {tier: clean(data.get(tier)) for tier in (*TIERS, "unknown")}
-        if not tiered and isinstance(data, list):
-            return {"": clean(data)}
-    if tiered:
-        raise ExtractError("返答を区分ごとのJSONとして読めませんでした")
-    lines = [re.sub(r"^[\s\-・*\d.)]+", "", line).strip().strip('",') for line in text.splitlines()]
-    names = clean([line for line in lines if line and line not in "[]"])
-    if not names:
+    data = None
+    for opener, closer in (("{", "}"), ("[", "]")):
+        start, end = text.find(opener), text.rfind(closer)
+        if start != -1 and end > start:
+            try:
+                data = json.loads(text[start:end + 1])
+                break
+            except json.JSONDecodeError:
+                continue
+    result = {"course": "", "strategy": "", "sections": []}
+    if isinstance(data, dict):
+        result["course"] = normalize_course(data.get("course"))
+        result["strategy"] = normalize_strategy(str(data.get("strategy") or "")) or ""
+        sections = data.get("sections")
+        if isinstance(sections, list):
+            for section in sections:
+                if isinstance(section, dict) and _clean(section.get("skills")):
+                    result["sections"].append({"tier": heading_tier(section.get("heading")), "skills": _clean(section.get("skills"))})
+        elif _clean(data.get("skills")):
+            result["sections"].append({"tier": "", "skills": _clean(data.get("skills"))})
+    elif isinstance(data, list):
+        result["sections"].append({"tier": "", "skills": _clean(data)})
+    else:   # JSONでない返答は、行ごとにスキル名として読む
+        lines = [re.sub(r"^[\s\-・*\d.)]+", "", line).strip().strip('",') for line in text.splitlines()]
+        names = _clean([line for line in lines if line and line not in "[]{}"])
+        if names:
+            result["sections"].append({"tier": "", "skills": names})
+    if not result["sections"] and not isinstance(data, (dict, list)):
         raise ExtractError("返答からスキル名を読み取れませんでした")
-    return {"": names}
+    return result
 
 
-def call_reader(reader: Reader, image: Path, tiered: bool, opener=urllib.request.urlopen) -> dict[str, list[str]]:
+def as_reading(value: dict) -> dict:
+    """保存した読み取り結果を今の形にそろえる(単純な {区分: [名前]} の形も受け付ける)。"""
+    if "sections" in value:
+        return value
+    return {"course": "", "strategy": "", "sections": [
+        {"tier": key if key in TIERS else "", "skills": list(names)} for key, names in value.items() if names]}
+
+
+def call_reader(reader: Reader, image: Path, opener=urllib.request.urlopen) -> dict:
     """1枚の画像を1つのモデルに読ませる。"""
     mime = mimetypes.guess_type(image.name)[0] or "image/png"
     data_url = f"data:{mime};base64,{base64.b64encode(image.read_bytes()).decode('ascii')}"
     body = json.dumps({
         "model": reader.model,
         "messages": [{"role": "user", "content": [
-            {"type": "text", "text": PROMPT_TIERED if tiered else PROMPT_LIST},
+            {"type": "text", "text": PROMPT},
             {"type": "image_url", "image_url": {"url": data_url}},
         ]}],
     }).encode("utf-8")
@@ -212,7 +243,7 @@ def call_reader(reader: Reader, image: Path, tiered: bool, opener=urllib.request
             content = payload["choices"][0]["message"]["content"]
             if isinstance(content, list):  # 一部の実装は本文を部品の配列で返す
                 content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-            return parse_names(str(content), tiered)
+            return parse_reply(str(content))
         except urllib.error.HTTPError as error:
             detail = error.read().decode("utf-8", "replace")[:200].replace("\n", " ")
             last_error = f"HTTP {error.code}: {detail}"
@@ -267,20 +298,63 @@ def save_reading(conn: sqlite3.Connection, event: str, file: str, reader: Reader
         )
 
 
+def majority(values: list[str]) -> str:
+    """空でない値のうち、過半数を取ったもの。なければ空文字。"""
+    values = [v for v in values if v]
+    if not values:
+        return ""
+    value, count = Counter(values).most_common(1)[0]
+    return value if count * 2 > len(values) else ""
+
+
+def detect_race(conn: sqlite3.Connection, event: str) -> str:
+    """そのイベントの読み取り結果から、いちばん多く読まれたコース。"""
+    courses = [as_reading(json.loads(r["names"])).get("course", "") for r in conn.execute(
+        "SELECT names FROM readings WHERE event = ? AND error = ''", (event,))]
+    courses = [c for c in courses if c]
+    return Counter(courses).most_common(1)[0][0] if courses else ""
+
+
+def image_warnings(shot: Shot, race: str, readings: list[dict]) -> list[str]:
+    """フォルダ(撮影時のホットキー設定)と画像の中身の食い違い。"""
+    warnings = []
+    strategy = majority([r.get("strategy", "") for r in readings])
+    if strategy and strategy != shot.strategy:
+        warnings.append(f"フォルダは「{shot.strategy}」ですが、画像の脚質タブは「{strategy}」です")
+    course = majority([r.get("course", "") for r in readings])
+    if course and course != race:
+        warnings.append(f"画像のコースは「{course}」です(このイベントは {race})")
+    if shot.tier:
+        # 各モデルが見た見出し。フォルダの区分の見出しが写っておらず、反対の区分だけが写っていれば切り替え忘れ
+        seen = [{s["tier"] for s in r["sections"] if s["tier"]} for r in readings]
+        other = next(t for t in TIERS if t != shot.tier)
+        only_other = [s for s in seen if s == {other}]
+        if only_other and len(only_other) * 2 > len(readings):
+            warnings.append(f"フォルダは「{TIER_LABELS[shot.tier]}」ですが、画像の見出しは「{TIER_LABELS[other]}スキル」です")
+    return warnings
+
+
 def apply_votes(conn: sqlite3.Connection, master: SkillMaster | None, event: str, race: str, shot: Shot,
-                reader_count: int) -> int:
+                reader_count: int, auto_confirm: bool = False) -> dict:
     """その画像の読み取り結果を突き合わせ、確認用の行を作る(作成済みの行は票数だけ更新)。"""
-    stored = conn.execute(
-        "SELECT reader, names FROM readings WHERE event = ? AND source_file = ? AND error = ''", (event, shot.file)).fetchall()
+    stored = [(row["reader"], as_reading(json.loads(row["names"]))) for row in conn.execute(
+        "SELECT reader, names FROM readings WHERE event = ? AND source_file = ? AND error = ''", (event, shot.file))]
+    result = {"rows": 0, "auto_ok": 0, "auto_rejected": 0, "warnings": 0}
+    if not stored:
+        return result
     by_tier: dict[str, dict[str, list[str]]] = {}
-    for row in stored:
-        for tier_key, names in json.loads(row["names"]).items():
-            tier = shot.tier or (tier_key if tier_key in TIERS else None)
-            if tier is None:   # 区分の分からないスキルは、人が区分を決められるよう超おすすめ側に要注意で出す
-                tier = "super_recommended"
-            by_tier.setdefault(tier, {}).setdefault(row["reader"], []).extend(names)
-    added = 0
+    for reader_name, reading in stored:
+        for section in reading["sections"]:
+            # 区分はフォルダを優先。フォルダで決まらず見出しも分からないスキルは、超おすすめ側に出して人が決める
+            tier = shot.tier or section["tier"] or "super_recommended"
+            by_tier.setdefault(tier, {}).setdefault(reader_name, []).extend(section["skills"])
+    warnings = image_warnings(shot, race, [reading for _, reading in stored])
+    result["warnings"] = len(warnings)
     with conn:
+        conn.execute(
+            """INSERT INTO images (event, source_file, warning) VALUES (?, ?, ?)
+               ON CONFLICT (event, source_file) DO UPDATE SET warning = excluded.warning""",
+            (event, shot.file, " / ".join(warnings)))
         for tier, readings in by_tier.items():
             for item in tally(readings, master):
                 cursor = conn.execute(
@@ -293,8 +367,60 @@ def apply_votes(conn: sqlite3.Connection, master: SkillMaster | None, event: str
                     (event, race, shot.strategy, tier, item["skill"], item["skill"], shot.file,
                      item["votes"], reader_count, ",".join(item["read_by"])),
                 )
-                added += cursor.rowcount
-    return added
+                result["rows"] += cursor.rowcount
+        if auto_confirm and not warnings and reader_count >= 2:
+            ok, rejected = auto_decide(conn, master, event, shot)
+            result["auto_ok"], result["auto_rejected"] = ok, rejected
+    return result
+
+
+def auto_decide(conn: sqlite3.Connection, master: SkillMaster | None, event: str, shot: Shot) -> tuple[int, int]:
+    """多数決の結果をそのまま採用する。人が触った行(未確認でない行)には手を付けない。
+
+    - 過半数のモデルが読み、マスタにあるスキル → OK
+    - 1モデルだけが読み、マスタにないスキル → 却下(誤読とみなす)
+    - それ以外(1モデルだけが読んだ実在のスキルなど) → 未確認のまま残して人が見る
+    """
+    ok = rejected = 0
+    rows = conn.execute(
+        """SELECT id, skill, votes, readers FROM skills
+           WHERE event = ? AND source_file = ? AND source_csv = 'guide_app' AND status = 'draft'""",
+        (event, shot.file)).fetchall()
+    for row in rows:
+        known = master.canonical(row["skill"]) is not None if master else False
+        votes, readers = row["votes"] or 0, row["readers"] or 0
+        if known and votes * 2 > readers:
+            conn.execute("UPDATE skills SET status = 'ready', memo = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+                         (f"自動OK({votes}/{readers})", row["id"]))
+            ok += 1
+        elif not known and votes == 1:
+            conn.execute("UPDATE skills SET status = 'rejected', memo = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+                         (f"自動却下(1/{readers}・マスタになし)", row["id"]))
+            rejected += 1
+    left = conn.execute("SELECT COUNT(*) FROM skills WHERE event = ? AND source_file = ? AND status = 'draft'",
+                        (event, shot.file)).fetchone()[0]
+    if not left:   # 見るものが残っていない画像は確認済みにする
+        conn.execute("UPDATE images SET reviewed_at = datetime('now', 'localtime') WHERE event = ? AND source_file = ? AND reviewed_at IS NULL",
+                     (event, shot.file))
+    return ok, rejected
+
+
+def reader_stats(conn: sqlite3.Connection, reader_names: list[str]) -> list[dict]:
+    """モデルごとの成績。どのモデルが弱いかを見るための集計。"""
+    stats = {name: {"name": name, "calls": 0, "errors": 0, "solo": 0, "solo_rejected": 0, "missed": 0} for name in reader_names}
+    for r in conn.execute("SELECT reader, COUNT(*) AS calls, SUM(error != '') AS errors FROM readings GROUP BY reader"):
+        if r["reader"] in stats:
+            stats[r["reader"]].update(calls=r["calls"], errors=r["errors"])
+    for r in conn.execute("SELECT status, votes, readers, read_by FROM skills WHERE source_csv = 'guide_app' AND readers >= 2"):
+        read_by = [n for n in r["read_by"].split(",") if n]
+        if r["votes"] == 1 and read_by and read_by[0] in stats:   # そのモデルだけが読んだ
+            stats[read_by[0]]["solo"] += 1
+            stats[read_by[0]]["solo_rejected"] += r["status"] == "rejected"
+        if r["status"] == "ready":                                 # 採用されたスキルを読めていなかった
+            for name in stats:
+                if name not in read_by:
+                    stats[name]["missed"] += 1
+    return list(stats.values())
 
 
 # ---------- ジョブ ----------
@@ -306,6 +432,9 @@ class Job:
     done: int = 0
     requests: int = 0         # モデルを呼んだ回数
     rows: int = 0
+    auto_ok: int = 0
+    auto_rejected: int = 0
+    warnings: int = 0         # フォルダと中身が食い違う画像の数
     errors: list[str] = field(default_factory=list)
     state: str = "running"    # running / finished / cancelled / failed
     started_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -313,8 +442,9 @@ class Job:
     current: str = ""
 
     def to_dict(self) -> dict:
-        return {k: getattr(self, k) for k in ("event", "race", "total", "done", "requests", "rows", "state",
-                                                "started_at", "finished_at", "current")} | {"errors": self.errors[-20:]}
+        keys = ("event", "race", "total", "done", "requests", "rows", "auto_ok", "auto_rejected", "warnings",
+                "state", "started_at", "finished_at", "current")
+        return {k: getattr(self, k) for k in keys} | {"errors": self.errors[-20:]}
 
 
 def plan(conn: sqlite3.Connection, inbox: Path, event: str, readers: list[Reader], force: bool = False) -> list[tuple[Shot, list[Reader]]]:
@@ -343,8 +473,10 @@ def validate_race(race: str) -> str:
 class Extractor:
     """抽出ジョブを1つずつ裏で動かす。"""
 
-    def __init__(self, connect, inbox: Path, readers: list[Reader], master: SkillMaster | None, call=call_reader):
+    def __init__(self, connect, inbox: Path, readers: list[Reader], master: SkillMaster | None,
+                 call=call_reader, auto_confirm: bool = False):
         self.connect, self.inbox, self.readers, self.master, self.call = connect, Path(inbox), list(readers), master, call
+        self.auto_confirm = auto_confirm
         self.job: Job | None = None
         self._lock = threading.Lock()
         self._cancel = threading.Event()
@@ -355,14 +487,15 @@ class Extractor:
         with self.connect() as conn:
             work = plan(conn, self.inbox, event, self.readers, force)
         return {"event": event, "images": len(work), "requests": sum(len(todo) for _, todo in work),
-                "readers": [{"name": r.name, "model": r.model} for r in self.readers]}
+                "readers": [{"name": r.name, "model": r.model} for r in self.readers], "auto_confirm": self.auto_confirm}
 
-    def start(self, event: str, race: str, force: bool = False, wait: bool = False) -> Job:
+    def start(self, event: str, race: str = "", force: bool = False, wait: bool = False) -> Job:
+        """race を空にすると、画像から読み取ったコースを使う。"""
         if not self.readers:
             raise ExtractError("読み取りに使うモデルが設定されていません(config.toml の [[readers]])")
         if not EVENT_RE.fullmatch(event):
             raise ExtractError("イベント名が不正です")
-        race = validate_race(race)
+        race = validate_race(race) if race.strip() else ""
         for reader in self.readers:
             reader.key()   # キーがなければ始める前に知らせる
         with self._lock:
@@ -370,12 +503,8 @@ class Extractor:
                 raise ExtractError(f"{self.job.event} の抽出が進行中です")
             with self.connect() as conn:
                 work = plan(conn, self.inbox, event, self.readers, force)
-                with conn:
-                    conn.execute(
-                        "INSERT INTO events (event, race) VALUES (?, ?) ON CONFLICT (event) DO UPDATE SET race = excluded.race",
-                        (event, race))
-            if not work:
-                raise ExtractError("読み取る画像がありません(すべて読み取り済みです)")
+            if not list_shots(self.inbox, event):
+                raise ExtractError("このイベントの撮影画像がありません")
             self.job = Job(event=event, race=race, total=len(work))
             self._cancel.clear()
             job = self.job
@@ -397,7 +526,7 @@ class Extractor:
             self._cancel.wait(wait)
         self._last_call[reader.name] = time.monotonic()
         try:
-            return reader, self.call(reader, shot.path, shot.tier is None), ""
+            return reader, as_reading(self.call(reader, shot.path)), ""
         except ExtractError as error:
             return reader, None, str(error)
         except Exception as error:  # noqa: BLE001 - 1モデルの失敗でジョブ全体は止めない
@@ -405,21 +534,39 @@ class Extractor:
 
     def _run(self, job: Job, work: list[tuple[Shot, list[Reader]]]) -> None:
         try:
-            with self.connect() as conn, ThreadPoolExecutor(max_workers=max(1, len(self.readers))) as pool:
-                for shot, todo in work:
-                    if self._cancel.is_set():
-                        job.state = "cancelled"
-                        break
-                    job.current = f"{shot.strategy} {shot.file}"
-                    for reader, names, error in pool.map(lambda r: self._read(r, shot), todo):
-                        job.requests += 1
-                        save_reading(conn, job.event, shot.file, reader, names, error)
-                        if error:
-                            job.errors.append(f"{shot.file}: {error}")
-                    job.rows += apply_votes(conn, self.master, job.event, job.race, shot, len(self.readers))
-                    job.done += 1
+            with self.connect() as conn:
+                with ThreadPoolExecutor(max_workers=max(1, len(self.readers))) as pool:
+                    for shot, todo in work:
+                        if self._cancel.is_set():
+                            job.state = "cancelled"
+                            break
+                        job.current = f"{shot.strategy} {shot.file}"
+                        for reader, names, error in pool.map(lambda r: self._read(r, shot), todo):
+                            job.requests += 1
+                            save_reading(conn, job.event, shot.file, reader, names, error)
+                            if error:
+                                job.errors.append(f"{shot.file}: {error}")
+                        job.done += 1
+                # 読み取りが終わってから行を作る(コースをイベント全体の多数決で決めるため)。読み取り済みの分だけなら呼び出しなしで済む
+                job.current = "結果を突き合わせています"
+                job.race = job.race or detect_race(conn, job.event)
+                if not job.race:
+                    raise ExtractError("画像からコースを読み取れませんでした。レースを選んで、もう一度「読み取りを開始」を押してください(読み取り済みの画像は呼び直しません)")
+                with conn:
+                    conn.execute(
+                        "INSERT INTO events (event, race) VALUES (?, ?) ON CONFLICT (event) DO UPDATE SET race = excluded.race",
+                        (job.event, job.race))
+                for shot in list_shots(self.inbox, job.event):
+                    result = apply_votes(conn, self.master, job.event, job.race, shot, len(self.readers), self.auto_confirm)
+                    job.rows += result["rows"]
+                    job.auto_ok += result["auto_ok"]
+                    job.auto_rejected += result["auto_rejected"]
+                    job.warnings += bool(result["warnings"])
             if job.state == "running":
                 job.state = "finished"
+        except ExtractError as error:
+            job.state = "failed"
+            job.errors.append(str(error))
         except Exception as error:  # noqa: BLE001
             job.state = "failed"
             job.errors.append(f"抽出が止まりました: {error}")
