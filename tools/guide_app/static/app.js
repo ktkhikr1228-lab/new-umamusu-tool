@@ -60,7 +60,8 @@ function reviewLink(event, race, strategy) {
 
 // ---------- ホーム ----------
 async function showHome() {
-  const [{ events, last_import, master }, ex] = await Promise.all([api("/api/overview"), api("/api/extract")]);
+  const [{ events, last_import, master }, ex, auto] = await Promise.all([
+    api("/api/overview"), api("/api/extract"), api("/api/automation").catch(() => null)]);
   const imp = last_import
     ? `最終取り込み ${esc(last_import.at)}(追加 ${last_import.added}行)` +
       (last_import.problems.length ? `<ul class="problems">${last_import.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "")
@@ -70,12 +71,28 @@ async function showHome() {
       <button class="btn sm" data-act="import-now" style="margin-left:8px">今すぐ取り込む</button>
       <div>スキルマスタ: ${esc(master.source)}(${master.skills}件${master.loaded_at ? "・" + esc(master.loaded_at) + " 取得" : ""})
         ${master.error ? `<span style="color:var(--warn)">${esc(master.error)}</span>` : ""}</div>
+      ${autoHtml(auto)}
     </div>
     <div id="job">${jobHtml(ex.job)}</div>
     ${captureCards(ex)}
     ${events.length ? events.filter((e) => !e.hidden).map(eventCard).join("") : `<div class="card">まだデータがありません。撮影した画像を読み取ると、ここに表示されます。</div>`}
     ${hiddenList(events.filter((e) => e.hidden))}`;
   watchJob(ex.job);
+}
+
+// 自動処理の状態(どれがオンか・最後の動き・通知の失敗・バックアップ)
+function autoHtml(a) {
+  if (!a) return "";
+  const on = (v, extra = "") => (v ? `<strong>オン</strong>${extra}` : "オフ");
+  const warn = (t) => `<div style="color:var(--warn)">${esc(t)}</div>`;
+  return `<div id="auto">自動処理: 読み取り ${on(a.auto_extract, `(撮影の${a.idle_minutes}分後)`)}
+      ・ 確定 ${on(a.auto_confirm)} ・ 公開依頼 ${on(a.auto_publish, "(マージは人)")} ・ Discord通知 ${on(a.notify)}
+      ・ バックアップ ${a.backup_keep > 0 ? `毎日(${a.backup_keep}個まで)` : "オフ"}
+    <div>最後の動き: ${a.last_action ? `${esc(a.last_action.at)} ${esc(a.last_action.text)}` : "まだありません"}
+      ・ 最後のバックアップ: ${a.last_backup ? `${esc(a.last_backup.at)}(${esc(a.last_backup.file)})` : "まだありません"}</div>
+    ${a.notify_error ? warn(`通知の失敗: ${a.notify_error.at} ${a.notify_error.text}`) : ""}
+    ${Object.values(a.errors || {}).map((e) => warn(`自動処理のエラー: ${e}`)).join("")}
+    ${(a.notes || []).map((n) => `<div>⏸ ${esc(n)}</div>`).join("")}</div>`;
 }
 
 // ---------- 抽出(複数モデルで読み取り) ----------

@@ -22,8 +22,11 @@ class SkillMaster:
         """中身を入れ替える。このオブジェクトを持っている全員に反映される。"""
         if not isinstance(names, list) or not names or not all(isinstance(x, str) and x for x in names):
             raise ValueError("スキルマスタの形式が想定と違います")
-        self.names = list(names)
-        self._by_key = {normalize(n): n for n in self.names}
+        if len(self.names) >= 100 and len(names) < len(self.names) * 0.9:
+            # 取得が途中で切れた・壊れた内容で入れ替えると、実在のスキルを「マスタにない」と扱ってしまう
+            raise ValueError(f"スキルマスタが急に減っています({len(self.names)}件 → {len(names)}件)。入れ替えません")
+        by_key = {normalize(n): n for n in names}
+        self.names, self._by_key = list(names), by_key
 
     @classmethod
     def load(cls, path: Path) -> "SkillMaster":

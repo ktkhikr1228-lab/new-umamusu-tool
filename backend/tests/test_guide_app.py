@@ -289,7 +289,7 @@ class GuideAppPublishTests(unittest.TestCase):
             raise RuntimeError("network down")
         with self.assertRaises(publish.PublishError):
             publish.send(self.conn, self.plan(), MASTER.names, token, dispatch=boom)
-        self.assertIn("network down", publish.history(self.conn)[0]["result"]["error"])
+        self.assertEqual(publish.history(self.conn)[0]["result"]["error"], "RuntimeError")   # 例外の文は残さない(トークンが混ざりうる)
         self.assertEqual(len(self.plan().rows), 2)  # 何も送れていないので依頼済みにはしない
 
     def test_missing_token_is_explained(self):
@@ -481,7 +481,7 @@ class GuideAppExtractTests(unittest.TestCase):
             data = review.group(conn, MASTER, self.EV, self.RACE, "逃げ")
             drafts = {r["source_file"] for r in conn.execute("SELECT source_file FROM skills WHERE status = 'draft'")}
         self.assertIn("脚質タブは「先行」", warnings["a1.png"])
-        self.assertIn("見出しは「超おすすめスキル」", warnings["a2.png"])
+        self.assertIn("「超おすすめスキル」の見出しが写っています", warnings["a2.png"])
         self.assertEqual(warnings["b1.png"], "")
         self.assertTrue(all(im["warning"] for im in data["images"]))
         self.assertEqual(drafts, {"a1.png", "a2.png"})          # 食い違う画像は自動確定しない
@@ -533,15 +533,60 @@ class GuideAppExtractTests(unittest.TestCase):
         self.assertIn("追込 超おすすめ", capture["missing"])
         self.assertNotIn("逃げ 超おすすめ", capture["missing"])
 
-    def test_misread_name_counts_as_a_vote_for_the_similar_known_skill(self):
-        rows = extract.tally({"a": ["コーナー回復○", "末脚"], "b": ["コーナ回復○", "末脚"], "c": ["コーナー回復○", "謎"]}, MASTER)
-        got = {r["skill"]: (r["votes"], r["read_by"]) for r in rows}
-        self.assertEqual(got["コーナー回復○"], (3, ["a", "c", "b"]))   # bの誤読も同じスキルへの票
-        self.assertNotIn("コーナ回復○", got)
-        self.assertEqual(got["謎"][0], 1)                              # 似たスキルがなければ別の行のまま
-        # 同じモデルが両方読んでいる場合は別のスキルなので、まとめない
-        both = extract.tally({"a": ["コーナー回復○", "コーナ回復○"]}, MASTER)
-        self.assertEqual(len(both), 2)
+    def test_similar_names_are_never_merged_into_one_vote(self):
+        # 似た名前を同じスキルの票として数えると、○と◎の取り違えが多数決を通ってしまう
+        rows = extract.tally({"a": ["左回り○"], "b": ["左回り◎"], "c": ["左回りO"]}, MASTER)
+        self.assertEqual({r["skill"]: r["votes"] for r in rows}, {"左回り○": 1, "左回り◎": 1, "左回りO": 1})
+
+    def test_auto_confirm_leaves_risky_rows_for_a_human(self):
+        site = publish.Published({self.RACE: {"逃げ": {"recommended": ["末脚"]}}})   # サイトでは末脚はおすすめ
+        ex = extract.Extractor(self.connect, self.inbox, self.readers, MASTER, call=self.fake_call,
+                               auto_confirm=True, get_published=lambda: site)
+        ex.start(self.EV, wait=True)
+        rows = self.rows()
+        self.assertEqual(rows[("a1.png", "末脚")]["status"], "draft")        # サイトと区分が違う → 人が見る
+        self.assertEqual(rows[("a1.png", "左回り◎")]["status"], "ready")     # 3/3で問題なし
+        # 人が未確認に戻した行・区分を変えた行は、やり直しても自動で変えない
+        with self.connect() as conn:
+            review.update_row(conn, rows[("a1.png", "左回り◎")]["id"], {"status": "draft"})
+            review.update_row(conn, rows[("a2.png", "左回り○")]["id"], {"tier": "super_recommended", "status": "draft"})
+        ex.start(self.EV, wait=True)
+        with self.connect() as conn:
+            got = [dict(r) for r in conn.execute("SELECT skill, tier, status FROM skills WHERE source_file IN ('a1.png','a2.png') AND skill LIKE '左回り%' ORDER BY skill")]
+        self.assertEqual(got, [{"skill": "左回り○", "tier": "super_recommended", "status": "draft"},
+                               {"skill": "左回り◎", "tier": "super_recommended", "status": "draft"}])
+
+    def test_both_headings_in_one_image_is_flagged(self):
+        both = {"course": self.RACE, "strategy": "逃げ", "sections": [
+            {"tier": "super_recommended", "skills": ["末脚"]}, {"tier": "recommended", "skills": ["左回り○"]}]}
+        shot = extract.list_shots(self.inbox, self.EV)[0]
+        warnings = extract.image_warnings(shot, self.RACE, [both, both, both])
+        self.assertTrue(any("両方の区分" in w for w in warnings))
+
+    def test_readings_from_removed_readers_do_not_vote(self):
+        self.extractor().start(self.EV, self.RACE, wait=True)
+        two = self.readers[:2]   # grok を設定から外した
+        self.extractor(two).start(self.EV, self.RACE, wait=True)
+        row = self.rows()[("a1.png", "末脚")]
+        self.assertEqual((row["votes"], row["readers"]), (2, 2))
+
+    def test_key_with_newline_is_rejected_without_leaking(self):
+        write(Path(self.tmp.name) / "badkey", "sk-SECRET\nnote")
+        reader = extract.Reader("x", "https://example.invalid", "m", key_file=Path(self.tmp.name) / "badkey")
+        with self.assertRaises(extract.ExtractError) as caught:
+            reader.key()
+        self.assertNotIn("SECRET", str(caught.exception))
+
+    def test_master_refuses_to_shrink_and_migrations_can_rerun(self):
+        master = SkillMaster([f"スキル{i}" for i in range(200)])
+        with self.assertRaises(ValueError):
+            master.update(["スキル1"])
+        self.assertEqual(len(master.names), 200)
+        with self.connect() as conn:   # 版だけ巻き戻して、適用済みの文をもう一度流しても起動できる
+            conn.execute("PRAGMA user_version = 4")
+            conn.commit()
+        with self.connect() as conn:
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], len(db.MIGRATIONS))
 
     def test_parse_names_accepts_common_reply_shapes(self):
         skills = lambda text: [s["skills"] for s in extract.parse_reply(text)["sections"]]  # noqa: E731

@@ -86,6 +86,18 @@ MIGRATIONS = [
     """
     ALTER TABLE images ADD COLUMN warning TEXT NOT NULL DEFAULT '';
     """,
+    # v7: 自動処理(automation.py)の覚え書き。再起動しても、やり直しの回数や通知済みの印を忘れないため
+    """
+    CREATE TABLE automation_state (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL DEFAULT '',   -- JSON
+        updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    """,
+    # v8: 人が触った行の印。自動確定は、この印のある行に手を付けない
+    """
+    ALTER TABLE skills ADD COLUMN touched INTEGER NOT NULL DEFAULT 0;
+    """,
 ]
 
 
@@ -100,12 +112,29 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _statements(script: str) -> list[str]:
+    out, buffer = [], ""
+    for line in script.splitlines(keepends=True):
+        buffer += line
+        if sqlite3.complete_statement(buffer):
+            if buffer.strip():
+                out.append(buffer.strip())
+            buffer = ""
+    return out + ([buffer.strip()] if buffer.strip() else [])
+
+
 def migrate(conn: sqlite3.Connection) -> None:
+    """版を1つずつ上げる。途中で止まった版をやり直しても進めるよう、適用済みの文(列・表がもうある)は飛ばす。"""
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     for index in range(version, len(MIGRATIONS)):
-        with conn:
-            conn.executescript(MIGRATIONS[index])
-            conn.execute(f"PRAGMA user_version = {index + 1}")
+        for statement in _statements(MIGRATIONS[index]):
+            try:
+                conn.execute(statement)
+            except sqlite3.OperationalError as error:
+                if "duplicate column name" not in str(error) and "already exists" not in str(error):
+                    raise
+        conn.execute(f"PRAGMA user_version = {index + 1}")
+        conn.commit()
 
 
 def status_counts(conn: sqlite3.Connection) -> list[sqlite3.Row]:

@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import db, extract, publish, review
+from . import automation, db, extract, publish, review
 from .config import Config
 from .importer import import_all
 from .skill_master import SkillMaster
@@ -41,7 +41,8 @@ class App:
         db.connect(config.db_path).close()  # 起動時にテーブルを用意
         self.master_info: dict = {"source": "手元のファイル", "skills": len(self.master.names), "loaded_at": "", "error": None}
         self.extractor = extract.Extractor(self.connect, config.inbox_dir, list(config.readers), self.master,
-                                           auto_confirm=config.auto_confirm)
+                                           auto_confirm=config.auto_confirm, get_published=lambda: self.published)
+        self.automation = automation.Automation(self)   # 見回りは start_automation で始める(ここでは何も動かさない)
 
     @contextmanager
     def connect(self):
@@ -118,6 +119,22 @@ class Handler(BaseHTTPRequestHandler):
             raise review.ReviewError("送信データの形式が不正です")
         return data
 
+    def host_allowed(self) -> bool:
+        """外部サイトが自分のドメイン名をこのPiのIPに向け直して操作する手口(DNSリバインディング)を防ぐ。
+
+        通すのは、IPアドレス・localhost・ドットのない名前(uma-pi)・Tailscaleの名前(*.ts.net)・設定で許可した名前だけ。
+        """
+        host = (self.headers.get("Host") or "").strip().lower()
+        name = host.rsplit(":", 1)[0] if not host.endswith("]") else host
+        name = name.strip("[]")
+        if not name:
+            return False
+        if name == "localhost" or "." not in name or name.endswith(".ts.net") or ":" in name:
+            return True
+        if all(part.isdigit() for part in name.split(".")):
+            return True
+        return name in {h.lower() for h in self.app.config.allowed_hosts}
+
     def write_allowed(self) -> bool:
         if self.headers.get(WRITE_HEADER) != "1":
             return False
@@ -135,6 +152,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
         try:
+            if not self.host_allowed():
+                return self.send_error_json("このアドレスからは開けません(uma-pi かIPアドレスで開いてください)", HTTPStatus.FORBIDDEN)
             if method == "POST" and not self.write_allowed():
                 return self.send_error_json("この操作は確認画面からのみ行えます", HTTPStatus.FORBIDDEN)
             route = ROUTES.get((method, url.path))
@@ -281,6 +300,9 @@ class Handler(BaseHTTPRequestHandler):
         self.app.extractor.cancel()
         self.send_json({"ok": True})
 
+    def get_automation(self, query):
+        self.send_json(self.app.automation.status())
+
     def post_import(self, query):
         self.send_json(self.app.run_import())
 
@@ -297,6 +319,7 @@ ROUTES = {
     ("GET", "/api/extract"): Handler.get_extract,
     ("POST", "/api/extract"): Handler.post_extract,
     ("POST", "/api/extract-cancel"): Handler.post_extract_cancel,
+    ("GET", "/api/automation"): Handler.get_automation,
     ("GET", "/api/publish"): Handler.get_publish,
     ("POST", "/api/publish"): Handler.post_publish,
     ("POST", "/api/publish-reset"): Handler.post_publish_reset,
@@ -325,6 +348,11 @@ def start_auto_import(app: App, interval: int) -> threading.Thread | None:
     thread = threading.Thread(target=loop, name="auto-import", daemon=True)
     thread.start()
     return thread
+
+
+def start_automation(app: App, interval: int = automation.TICK_SECONDS) -> threading.Thread:
+    """自動処理(自動読み取り・通知・自動公開依頼・バックアップ)の見回りを始める。"""
+    return automation.start_automation(app, interval)
 
 
 def make_server(config: Config) -> ThreadingHTTPServer:

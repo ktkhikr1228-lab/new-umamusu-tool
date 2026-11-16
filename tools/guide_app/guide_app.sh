@@ -26,7 +26,13 @@ LOG_LIMIT_BYTES=$((5 * 1024 * 1024))
 mkdir -p "$RUN_DIR"
 
 is_running() {
-    [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+    # PIDファイルは再起動後も残る。同じ番号を別のプログラムが使っていても「動いている」と誤解しないよう、中身も確かめる
+    [[ -f "$PID_FILE" ]] || return 1
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null)"
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+    tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q "guide_app.sh _supervise"
 }
 
 port() {
@@ -36,11 +42,19 @@ port() {
 # 落ちても立ち上げ直すループ(内部用)
 supervise() {
     cd "$REPO_DIR"
+    local wait=5 began
     while true; do
+        # ログが大きくなりすぎたら空にする(起動に失敗し続けたときに、ディスクを埋めないため)
+        if [[ -f "$LOG_FILE" ]] && (( $(stat -c %s "$LOG_FILE") > LOG_LIMIT_BYTES )); then
+            cp -f "$LOG_FILE" "$LOG_FILE.1" && : >"$LOG_FILE"
+        fi
         echo "[$(date '+%F %T')] 起動します"
-        "$PYTHON" tools/guide_app serve || true
-        echo "[$(date '+%F %T')] 停止しました。5秒後に再起動します"
-        sleep 5
+        began=$(date +%s)
+        "$PYTHON" -u tools/guide_app serve || true
+        # すぐ落ちる状態が続くときは、待ち時間を5秒→最大10分まで延ばす。1分以上動いたら元に戻す
+        if (( $(date +%s) - began >= 60 )); then wait=5; else wait=$(( wait * 2 > 600 ? 600 : wait * 2 )); fi
+        echo "[$(date '+%F %T')] 停止しました。${wait}秒後に再起動します"
+        sleep "$wait"
     done
 }
 
@@ -78,6 +92,7 @@ stop() {
         kill -0 "$pid" 2>/dev/null || break
         sleep 0.5
     done
+    kill -9 -- "-$pid" 2>/dev/null || true   # 止まらないときは強制終了(ポートを握ったまま残さない)
     rm -f "$PID_FILE"
     echo "停止しました"
 }
@@ -97,30 +112,38 @@ status() {
 
 # このアプリ以外のcronの行。読み込みを先に終えてから書き込む(同時に行うと既存の行が消えることがある)
 other_cron_lines() {
-    local current
-    current="$(crontab -l 2>/dev/null || true)"
+    local current status=0
+    current="$(crontab -l 2>&1)" || status=$?
+    if (( status != 0 )); then
+        # 「まだ登録がない」以外の失敗で続けると、既存の登録を消してしまう
+        if grep -qi "no crontab" <<<"$current"; then current=""; else echo "crontabを読めませんでした: $current" >&2; exit 1; fi
+    fi
     if [[ -n "$current" ]]; then
         printf '%s\n' "$current" | grep -vF "$CRON_MARK" || true
     fi
 }
 
 write_crontab() {
-    local backup="$RUN_DIR/crontab.backup"
-    crontab -l >"$backup" 2>/dev/null || true  # 念のため変更前を保存
+    local backup="$RUN_DIR/crontab.backup.$(date +%Y%m%d-%H%M%S)"
+    crontab -l >"$backup" 2>/dev/null || rm -f "$backup"  # 念のため変更前を保存(登録がなければ作らない)
     printf '%s\n' "$1" | crontab -
 }
 
 install() {
     local line="@reboot sleep 20 && bash \"$SELF\" start $CRON_MARK"
     # 既存の登録(アップロード画面など)はそのまま残し、このアプリの行だけを入れ替える
-    write_crontab "$( (other_cron_lines; echo "$line") )"
+    local others
+    others="$(other_cron_lines)"   # 読めなかったときはここで止まる(既存の登録を消さない)
+    write_crontab "$(printf '%s\n%s' "$others" "$line" | sed '/^$/d')"
     echo "自動起動を登録しました(再起動の20秒後に起動)"
     start
 }
 
 uninstall() {
     stop
-    write_crontab "$(other_cron_lines)"
+    local others
+    others="$(other_cron_lines)"
+    write_crontab "$others"
     echo "自動起動の登録を外しました"
 }
 

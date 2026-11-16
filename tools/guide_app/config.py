@@ -30,6 +30,14 @@ class Config:
     readers: tuple[Reader, ...] = ()  # 読み取りに使うモデル(2つ以上で多数決)
     auto_confirm: bool = False  # 多数決の結果をそのままOK/却下にする
     skill_master_url: str = ""  # 空ならGitHub mainの skill_master.json
+    allowed_hosts: tuple[str, ...] = ()  # 画面を開けるホスト名の追加分(IPアドレス・uma-pi・*.ts.net は常に可)
+    # ---- 自動処理(automation.py)。どれも既定はオフ ----
+    auto_extract: bool = False  # 撮影が止まったら、自動で読み取りを始める
+    auto_extract_idle_minutes: int = 10  # 最後の画像からこの分数だけ待つ(撮影中に始めないため)
+    auto_publish: bool = False  # 人が見る行が残っていなければ、自動で公開を依頼する(PRのマージは人)
+    discord_webhook_file: Path | None = None  # Discordのwebhook URLを書いたファイル。なければ通知しない
+    backup_dir: Path = Path("backups")  # DBの日次バックアップの置き場所
+    backup_keep: int = 14  # 残す日数分。0でバックアップしない
 
 
 def _path(value: object, base: Path) -> Path:
@@ -96,4 +104,12 @@ def load_config(path: Path | None = None, overrides: dict | None = None) -> Conf
         readers=_readers(raw.get("readers"), base),
         auto_confirm=bool(raw.get("auto_confirm", False)),
         skill_master_url=str(raw.get("skill_master_url", "")),
+        allowed_hosts=tuple(str(h) for h in raw.get("allowed_hosts", [])),
+        auto_extract=bool(raw.get("auto_extract", False)),
+        auto_extract_idle_minutes=max(0, int(raw.get("auto_extract_idle_minutes", 10))),
+        auto_publish=bool(raw.get("auto_publish", False)),
+        discord_webhook_file=(_path(raw["discord_webhook_file"], base)
+                              if str(raw.get("discord_webhook_file", "")).strip() else None),
+        backup_dir=_path(raw.get("backup_dir", data_root / "guide_app" / "backups"), base),
+        backup_keep=max(0, int(raw.get("backup_keep", 14))),
     )

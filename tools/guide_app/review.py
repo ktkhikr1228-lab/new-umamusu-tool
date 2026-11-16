@@ -173,7 +173,8 @@ def update_row(conn: sqlite3.Connection, row_id: int, changes: dict) -> dict:
     try:
         with conn:
             cursor = conn.execute(
-                f"UPDATE skills SET {sets}, updated_at = datetime('now', 'localtime') WHERE id = ?",
+                # 人が直した行には印を付ける(自動確定の対象外にする)。内容が変わるので、依頼済みの印は外して送り直せるようにする
+                f"UPDATE skills SET {sets}, touched = 1, published_at = NULL, updated_at = datetime('now', 'localtime') WHERE id = ?",
                 (*values.values(), row_id),
             )
     except sqlite3.IntegrityError as error:
@@ -195,7 +196,7 @@ def review_image(conn: sqlite3.Connection, master: SkillMaster, event: str, sour
     already = image["reviewed_at"] is not None
     with conn:
         conn.executemany(
-            "UPDATE skills SET status = 'ready', updated_at = datetime('now', 'localtime') WHERE id = ?",
+            "UPDATE skills SET status = 'ready', touched = 1, updated_at = datetime('now', 'localtime') WHERE id = ?",
             [(i,) for i in ids],
         )
         conn.execute(
@@ -229,9 +230,9 @@ def set_images_tier(conn: sqlite3.Connection, event: str, race: str, strategy: s
     duplicates = [(r["id"],) for r in rows if r["dup"]]
     with conn:
         conn.executemany(
-            "UPDATE skills SET tier = ?, updated_at = datetime('now', 'localtime') WHERE id = ?", moved)
+            "UPDATE skills SET tier = ?, touched = 1, published_at = NULL, updated_at = datetime('now', 'localtime') WHERE id = ?", moved)
         conn.executemany(
-            """UPDATE skills SET status = 'rejected', memo = trim(memo || ' 区分変更時に重複'),
+            """UPDATE skills SET status = 'rejected', touched = 1, memo = trim(memo || ' 区分変更時に重複'),
                updated_at = datetime('now', 'localtime') WHERE id = ?""", duplicates)
     return {"changed": len(moved), "duplicates": len(duplicates)}
 

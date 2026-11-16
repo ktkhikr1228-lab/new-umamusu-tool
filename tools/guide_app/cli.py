@@ -44,10 +44,11 @@ def cmd_status(config, args) -> int:
 
 
 def cmd_serve(config, args) -> int:
-    from .server import make_server, start_auto_import
+    from .server import make_server, start_auto_import, start_automation
 
     server = make_server(config)
     start_auto_import(server.app, config.import_interval)
+    start_automation(server.app)
     print(f"確認画面: http://{config.host if config.host != '0.0.0.0' else 'uma-pi'}:{config.port}/  (止めるには Ctrl+C)")
     print(f"抽出CSV: {config.extracted_dir}\nスクショ: {config.screenshots_dir}\nDB: {config.db_path}")
     try:

@@ -85,9 +85,12 @@ class PublishedSource:
             try:
                 with self.opener(self.url, timeout=20) as response:
                     data, source = json.loads(response.read().decode("utf-8")), "GitHub main"
+                if not isinstance(data, dict) or not Published(data).size:
+                    raise ValueError("内容が空か、想定と違う形です")
             except Exception as exc:  # noqa: BLE001 - ネットワーク不調でも手元のファイルで続ける
-                error = f"GitHubから取得できませんでした: {exc}"
-        if data is None and self.local.exists():
+                data, error = None, f"GitHubから取得できませんでした: {exc}"
+        # 一度GitHubから読めていれば、失敗時もその内容を使い続ける(手元の古いファイルで置き換えない)
+        if data is None and self.current.source != "GitHub main" and self.local.exists():
             data, source = json.loads(self.local.read_text(encoding="utf-8")), "手元のrace_data.json"
         with self._lock:
             if data is not None:
@@ -198,6 +201,8 @@ def read_token(path: Path) -> str:
         raise PublishError(f"GitHubのトークンファイルを読めません: {path}") from error
     if not token:
         raise PublishError(f"GitHubのトークンファイルが空です: {path}")
+    if any(c.isspace() or ord(c) < 32 for c in token):
+        raise PublishError(f"GitHubのトークンファイルに改行や空白が混ざっています: {path}(トークン1行だけにしてください)")
     return token
 
 
@@ -219,8 +224,9 @@ def send(conn: sqlite3.Connection, plan: EventPlan, master_names: list[str], tok
             dispatch(request, token)
             sent_ids.extend(part)
     except Exception as error:  # noqa: BLE001 - 途中まで送れた分は記録してから知らせる
-        _record(conn, plan.event, sent_ids, summary | {"error": str(error)})
-        detail = f"HTTP {error.code}" if hasattr(error, "code") else str(error)
+        # 例外の文にはトークンが混ざることがあるので、種類と番号だけを残す
+        detail = f"HTTP {error.code}" if hasattr(error, "code") else type(error).__name__
+        _record(conn, plan.event, sent_ids, summary | {"error": detail})
         raise PublishError(f"GitHubへの依頼に失敗しました({detail})。送れたのは{len(sent_ids)}行です") from error
     summary |= {"sent": True, "actions_url": f"https://github.com/{REPO}/actions/workflows/{dispatcher.WORKFLOW}",
                 "pr_url": f"https://github.com/{REPO}/pulls?q=is%3Apr+head%3Adata%2Freviewed-race-{plan.event}"}

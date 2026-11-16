@@ -26,6 +26,27 @@ import_interval = 300
 #   それ以外と、撮影時の設定と中身が食い違う画像 → 人が確認する
 # auto_confirm = true
 
+# ---- 自動処理(触らなくても進むようにする)。どれも書かなければオフ ----
+# 撮影が止まったら自動で読み取りを始める。最後の画像から auto_extract_idle_minutes 分たってから始める。
+# 読めない画像が残ったときのやり直しは、30分以上あけて3回まで(新しく撮影すると数え直す)。
+# auto_extract = true
+# auto_extract_idle_minutes = 10
+
+# 人が見る行が残っていないイベントは、自動で公開を依頼する(PRを作るところまで。マージは人が行う)。
+# 未確認の行・公開できない行・設定と食い違う画像・撮り忘れの疑い・未抽出の画像が1つでもあれば依頼しない。
+# 対象は、自動読み取りで読んだイベントだけ。サイトに出ているスキルの区分が変わる依頼は、自動では送らない(人が公開画面から送る)。
+# auto_confirm = true と組み合わせると、撮影からPR作成までが自動になる。
+# auto_publish = true
+
+# Discordへの通知。webhookのURLを1行だけ書いたファイルを指す(URLはこのファイルやリポジトリに書かない)。
+#   作り方: echo 'https://discord.com/api/webhooks/...' > ~/.config/uma-tool/discord_webhook && chmod 600 ~/.config/uma-tool/discord_webhook
+# 読み取りの完了・失敗、公開依頼の送信、自動処理があきらめたときに知らせる。
+# discord_webhook_file = "~/.config/uma-tool/discord_webhook"
+
+# DBのバックアップ。1日1回 guide-YYYYMMDD.sqlite3 を作り、backup_keep 個より古いものを消す。0でバックアップしない
+# backup_dir = "/home/katao/uma-guide-data/guide_app/backups"
+# backup_keep = 14
+
 # 撮影画像の置き場所。<イベント>/<脚質>/<区分>/ の形で入っている場所
 # inbox_dir = "/home/katao/uma-guide-data/screenshots/inbox"
 
@@ -55,3 +76,7 @@ import_interval = 300
 # base_url = "https://example.com/api"
 # model = "claude-opus-5.5"
 # key_file = "~/.config/uma-tool/webui_api_key"
+
+# 画面を開けるホスト名の追加分。IPアドレス・uma-pi のようなドットのない名前・Tailscaleの名前(*.ts.net)は常に開けます。
+# それ以外の名前で開く場合だけ書きます(外部サイトからの不正な操作を防ぐための制限)。
+# allowed_hosts = ["pi.example.com"]
