@@ -60,7 +60,7 @@ function reviewLink(event, race, strategy) {
 
 // ---------- ホーム ----------
 async function showHome() {
-  const { events, last_import } = await api("/api/overview");
+  const [{ events, last_import }, ex] = await Promise.all([api("/api/overview"), api("/api/extract")]);
   const imp = last_import
     ? `最終取り込み ${esc(last_import.at)}(追加 ${last_import.added}行)` +
       (last_import.problems.length ? `<ul class="problems">${last_import.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "")
@@ -69,8 +69,89 @@ async function showHome() {
     <div class="card small muted">${imp}
       <button class="btn sm" data-act="import-now" style="margin-left:8px">今すぐ取り込む</button>
     </div>
-    ${events.length ? events.filter((e) => !e.hidden).map(eventCard).join("") : `<div class="card">まだデータがありません。抽出CSVを取り込むとここに表示されます。</div>`}
+    <div id="job">${jobHtml(ex.job)}</div>
+    ${captureCards(ex)}
+    ${events.length ? events.filter((e) => !e.hidden).map(eventCard).join("") : `<div class="card">まだデータがありません。撮影した画像を読み取ると、ここに表示されます。</div>`}
     ${hiddenList(events.filter((e) => e.hidden))}`;
+  watchJob(ex.job);
+}
+
+// ---------- 抽出(複数モデルで読み取り) ----------
+function captureCards(ex) {
+  const list = ex.captures.filter((c) => c.pending > 0);
+  if (!list.length) return "";
+  const readers = ex.readers.length
+    ? `読み取りに使うモデル: ${ex.readers.map((r) => `${esc(r.name)}(${esc(r.model)})`).join("・")}` +
+      (ex.readers.length < 2 ? " ※1つだけなので多数決にはなりません" : "")
+    : `<span style="color:var(--warn)">読み取りに使うモデルが未設定です。config.toml に [[readers]] を書いてください</span>`;
+  const running = ex.job && ex.job.state === "running";
+  return `<div class="card"><h2>撮影済み・未抽出</h2><div class="small muted">${readers}</div>
+    ${list.map((c) => {
+      const m = /^(\S+) (芝|ダート) (\d{4})m$/.exec(c.race || "") || [];
+      const cells = STRATEGIES.map((s) => {
+        const mine = c.cells.filter((x) => x.strategy === s);
+        if (!mine.length) return "";
+        return `${s} ` + mine.map((x) => `${x.tier ? (x.tier === "super_recommended" ? "超" : "お") : ""}${x.images}`).join("・");
+      }).filter(Boolean).join(" / ");
+      return `<div class="cap-row" data-event="${esc(c.event)}">
+        <div><strong>${esc(c.event)}</strong> <span class="muted small">画像 ${c.images}枚(未抽出 ${c.pending})・ ${cells}</span>
+          ${c.missing.length ? `<div class="small" style="color:var(--warn)">撮り忘れの可能性: ${esc(c.missing.join("、"))}</div>` : ""}</div>
+        <div class="cap-form">
+          <select data-f="track">${ex.tracks.map((t) => `<option ${t === m[1] ? "selected" : ""}>${t}</option>`).join("")}</select>
+          <select data-f="surface"><option ${m[2] === "芝" ? "selected" : ""}>芝</option><option ${m[2] === "ダート" ? "selected" : ""}>ダート</option></select>
+          <input type="text" data-f="distance" inputmode="numeric" size="5" placeholder="距離" value="${esc(m[3] || "")}">m
+          <button class="btn primary" data-act="extract" data-event="${esc(c.event)}" ${running || !ex.readers.length ? "disabled" : ""}>読み取りを開始</button>
+        </div></div>`;
+    }).join("")}</div>`;
+}
+
+function jobHtml(job) {
+  if (!job) return "";
+  const pct = job.total ? Math.round((job.done / job.total) * 100) : 0;
+  const label = { running: "読み取り中", finished: "読み取り完了", cancelled: "中止しました", failed: "エラーで停止" }[job.state];
+  return `<div class="card">
+    <div class="evhead"><div><strong>${label}: ${esc(job.event)}</strong>
+      <span class="muted small">${esc(job.race)} ・ 画像 ${job.done}/${job.total} ・ 呼び出し ${job.requests}回 ・ ${job.rows}行${job.current ? " ・ " + esc(job.current) : ""}</span></div>
+      ${job.state === "running" ? `<button class="btn sm" data-act="extract-cancel">中止</button>` : ""}</div>
+    <div class="bar"><i style="width:${pct}%;background:${job.state === "failed" ? "var(--warn)" : "var(--ok)"}"></i></div>
+    ${job.errors.length ? `<details class="small"><summary style="color:var(--warn);cursor:pointer">読めなかった呼び出し ${job.errors.length}件(もう一度「読み取りを開始」で、失敗した分だけやり直せます)</summary>
+      <ul class="problems">${job.errors.map((e) => `<li>${esc(e)}</li>`).join("")}</ul></details>` : ""}
+  </div>`;
+}
+
+let jobTimer;
+function watchJob(job) {
+  clearTimeout(jobTimer);
+  if (!job || job.state !== "running") return;
+  jobTimer = setTimeout(async () => {
+    if (parseHash().view !== "home") return;
+    try {
+      const ex = await api("/api/extract");
+      if (ex.job && ex.job.state === "running") {
+        const el = document.getElementById("job");
+        if (el) el.innerHTML = jobHtml(ex.job);   // 入力中のレース欄を消さないよう、進み具合だけ書き換える
+        watchJob(ex.job);
+      } else {
+        showHome();
+      }
+    } catch (_) { watchJob(job); }
+  }, 2000);
+}
+
+async function startExtract(event, row) {
+  const get = (f) => row.querySelector(`[data-f="${f}"]`).value.trim();
+  const race = `${get("track")} ${get("surface")} ${get("distance")}m`;
+  try {
+    const est = await api("/api/extract", { event, race, dry_run: true });
+    if (!est.requests) return toast("読み取る画像がありません");
+    const msg = `${event}(${race})を読み取ります。\n\n画像 ${est.images}枚 × ${est.readers.length}モデル = 呼び出し ${est.requests}回\n` +
+      est.readers.map((r) => `・${r.name}(${r.model})`).join("\n") + "\n\n開始してよろしいですか?";
+    if (!confirm(msg)) return;
+    await api("/api/extract", { event, race });
+    showHome();
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 function hiddenList(list) {
@@ -229,7 +310,7 @@ function imagePanel(im) {
       <div class="mrow ${r.status}">
         ${tierSelect("row-tier", r.id, r.tier)}
         <span class="nm">${esc(r.skill)}${r.skill !== r.extracted_skill ? ` <span class="small muted">(読み取り: ${esc(r.extracted_skill)})</span>` : ""}</span>
-        <span class="small muted">${r.published === "same" ? '<span class="chip ok">公開済み</span> ' : r.published === "new" ? '<span class="chip">新規</span> ' : ""}${r.status === "ready" ? "OK" : r.status === "rejected" ? "除外" : ""}</span>
+        <span class="small muted">${r.readers >= 2 ? `<span class="chip ok">${r.votes}/${r.readers}一致</span> ` : ""}${r.published === "same" ? '<span class="chip ok">公開済み</span> ' : r.published === "new" ? '<span class="chip">新規</span> ' : ""}${r.status === "ready" ? "OK" : r.status === "rejected" ? "除外" : ""}</span>
         <button class="btn sm" data-act="row-status" data-id="${r.id}" data-v="${r.status === "rejected" ? "draft" : "rejected"}">${r.status === "rejected" ? "戻す" : "除外"}</button>
       </div>`).join("")}
     </details>` : ""}
@@ -391,7 +472,11 @@ document.addEventListener("click", (ev) => {
   const el = ev.target.closest("[data-act]");
   if (!el || el.tagName === "SELECT" || el.tagName === "INPUT" || el.tagName === "DETAILS") return;
   const { act, v, id } = el.dataset;
-  if (act === "import-now") {
+  if (act === "extract") {
+    startExtract(el.dataset.event, el.closest(".cap-row"));
+  } else if (act === "extract-cancel") {
+    api("/api/extract-cancel", {}).then(() => toast("中止します(読み取り中の1枚が終わると止まります)")).catch((e) => toast(e.message, true));
+  } else if (act === "import-now") {
     api("/api/import", {}).then((r) => { toast(`取り込み: 追加 ${r.added}行`); route(); }).catch((e) => toast(e.message, true));
   } else if (act === "publish") {
     publishEvent(el.dataset.event);

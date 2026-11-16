@@ -41,12 +41,17 @@ def attention_reasons(rows: list[dict], master: SkillMaster, published=None) -> 
         tiers_by_skill[normalize(r["skill"])].add(r["tier"])
 
     for r in live:
+        votes, readers = r.get("votes"), r.get("readers") or 0
+        agreed = readers >= 2 and votes == readers   # 複数モデルが全員同じスキルを読んだ
+        if readers >= 2 and not agreed:
+            who = (r.get("read_by") or "").replace(",", "・")
+            reasons[r["id"]].append(f"{readers}モデル中{votes}モデルだけが読んだ({who})")
         if master.canonical(r["skill"]) is None:
             reasons[r["id"]].append("スキルマスタにない名前")
-        elif r["skill"].endswith("◎"):
+        elif r["skill"].endswith("◎") and not agreed:
             reasons[r["id"]].append("◎は○との読み違いが多い")
         group = by_image_base[(r["source_file"], _base_name(r["skill"]))]
-        if r["skill"][-1:] in "○◎" and {g["skill"][-1:] for g in group} >= {"○", "◎"}:
+        if not agreed and r["skill"][-1:] in "○◎" and {g["skill"][-1:] for g in group} >= {"○", "◎"}:
             reasons[r["id"]].append("同じ画像に○と◎の両方がある")
         if len(tiers_by_skill[normalize(r["skill"])]) > 1:
             reasons[r["id"]].append("超おすすめ・おすすめの両方にある")

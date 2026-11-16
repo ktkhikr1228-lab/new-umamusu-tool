@@ -50,6 +50,11 @@ table.grid td.n, table.grid th.n { text-align: right; font-variant-numeric: tabu
 details.card summary { cursor: pointer; }
 .problems { font-size: 13px; color: var(--warn); margin: 6px 0 0; padding-left: 18px; }
 
+.cap-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  padding: 10px 0; border-top: 1px solid var(--line); }
+.cap-row:first-of-type { margin-top: 8px; }
+.cap-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
 /* 確認画面 */
 .crumbs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }

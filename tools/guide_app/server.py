@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import db, publish, review
+from . import db, extract, publish, review
 from .config import Config
 from .importer import import_all
 from .skill_master import SkillMaster
@@ -39,6 +39,7 @@ class App:
         self.last_import: dict | None = None
         self.published_source = publish.PublishedSource(config.race_data_url or publish.RACE_DATA_URL)
         db.connect(config.db_path).close()  # 起動時にテーブルを用意
+        self.extractor = extract.Extractor(self.connect, config.inbox_dir, list(config.readers), self.master)
 
     @contextmanager
     def connect(self):
@@ -137,7 +138,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.static(url.path)
                 return self.send_error_json("見つかりません", HTTPStatus.NOT_FOUND)
             return route(self, query)
-        except review.ReviewError as error:
+        except (review.ReviewError, extract.ExtractError) as error:
             self.send_error_json(str(error))
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
             self.send_error_json(f"リクエストが不正です: {error}")
@@ -244,6 +245,31 @@ class Handler(BaseHTTPRequestHandler):
         self.app.published_source.refresh()
         self.send_json(self.app.published_info())
 
+    def get_extract(self, query):
+        app = self.app
+        with app.connect() as conn:
+            captures = extract.captures(conn, app.config.inbox_dir, [r.name for r in app.config.readers])
+            hidden = {r["event"] for r in conn.execute("SELECT event FROM events WHERE hidden = 1")}
+        self.send_json({
+            "captures": [c for c in captures if c["event"] not in hidden],
+            "job": app.extractor.status(),
+            "readers": [{"name": r.name, "model": r.model} for r in app.config.readers],
+            "tracks": extract.TRACKS,
+        })
+
+    def post_extract(self, query):
+        body = self.read_json()
+        event, force = str(body["event"]), bool(body.get("force"))
+        if body.get("dry_run"):
+            extract.validate_race(str(body.get("race", "")))
+            return self.send_json(self.app.extractor.estimate(event, force))
+        job = self.app.extractor.start(event, str(body.get("race", "")), force)
+        self.send_json(job.to_dict())
+
+    def post_extract_cancel(self, query):
+        self.app.extractor.cancel()
+        self.send_json({"ok": True})
+
     def post_import(self, query):
         self.send_json(self.app.run_import())
 
@@ -257,6 +283,9 @@ ROUTES = {
     ("POST", "/api/images-tier"): Handler.post_images_tier,
     ("POST", "/api/import"): Handler.post_import,
     ("POST", "/api/event-hidden"): Handler.post_event_hidden,
+    ("GET", "/api/extract"): Handler.get_extract,
+    ("POST", "/api/extract"): Handler.post_extract,
+    ("POST", "/api/extract-cancel"): Handler.post_extract_cancel,
     ("GET", "/api/publish"): Handler.get_publish,
     ("POST", "/api/publish"): Handler.post_publish,
     ("POST", "/api/publish-reset"): Handler.post_publish_reset,

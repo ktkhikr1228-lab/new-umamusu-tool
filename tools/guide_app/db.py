@@ -65,6 +65,23 @@ MIGRATIONS = [
         sent_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     );
     """,
+    # v5: 複数モデルでの読み取り(多数決)
+    """
+    ALTER TABLE skills ADD COLUMN votes INTEGER;                     -- そのスキルを読んだモデルの数
+    ALTER TABLE skills ADD COLUMN readers INTEGER;                   -- 読み取りに使ったモデルの数
+    ALTER TABLE skills ADD COLUMN read_by TEXT NOT NULL DEFAULT '';  -- 読んだモデル名(カンマ区切り)
+    ALTER TABLE events ADD COLUMN race TEXT NOT NULL DEFAULT '';     -- 抽出時に選んだレース
+    CREATE TABLE readings (
+        event       TEXT NOT NULL,
+        source_file TEXT NOT NULL,
+        reader      TEXT NOT NULL,
+        model       TEXT NOT NULL,
+        names       TEXT NOT NULL,              -- 読み取ったスキル名(JSON)
+        error       TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+        PRIMARY KEY (event, source_file, reader)
+    );
+    """,
 ]
 
 

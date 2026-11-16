@@ -13,6 +13,8 @@ from guide_app.importer import import_all, normalize_strategy, normalize_tier  #
 from guide_app.skill_master import SkillMaster  # noqa: E402
 from guide_app import review  # noqa: E402
 from guide_app import publish  # noqa: E402
+from guide_app import extract  # noqa: E402
+from contextlib import contextmanager  # noqa: E402
 
 HEADER = "race,strategy,tier,skill,source_file,status,memo\n"
 MASTER = SkillMaster(["左回り○", "左回り◎", "末脚", "コーナー回復○"])
@@ -323,6 +325,204 @@ class GuideAppPublishTests(unittest.TestCase):
         self.assertTrue(any("サイトでは" in a for a in rows["左回り○"]["attention"]))
         todo = review.overview(self.conn, self.site)[0]["todo"]
         self.assertEqual(todo, 1)  # 未確認は左回り◎だけ(サイトにない)
+
+
+class GuideAppExtractTests(unittest.TestCase):
+    RACE, EV = "京都 芝 3000m", "2026-11_LOH"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.inbox = base / "inbox"
+        self.db_path = base / "guide.sqlite3"
+        for rel in ("1_nige/super/a1.png", "1_nige/recommended/a2.png", "2_senkou/super/b1.png"):
+            write(self.inbox / self.EV / rel, "img")
+        write(base / "key", "secret")
+        self.readers = [extract.Reader(n, "https://example.invalid/api", f"model-{n}", key_file=base / "key")
+                        for n in ("gemini", "claude", "grok")]
+        self.answers = {
+            ("gemini", "a1.png"): ["末脚", "左回り◎", "コーナー回復○"],
+            ("claude", "a1.png"): ["末脚", "左回り◎"],
+            ("grok", "a1.png"): ["末脚", "左回り◎", "謎スキル"],
+            ("gemini", "a2.png"): ["左回り〇"], ("claude", "a2.png"): ["左回り○"], ("grok", "a2.png"): ["左回り◯"],
+            ("gemini", "b1.png"): ["末脚"], ("claude", "b1.png"): ["末脚"], ("grok", "b1.png"): ["末脚"],
+        }
+        self.calls = []
+        self.failing = set()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @contextmanager
+    def connect(self):
+        conn = db.connect(self.db_path)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def fake_call(self, reader, image, tiered):
+        self.calls.append((reader.name, image.name))
+        if (reader.name, image.name) in self.failing:
+            raise extract.ExtractError(f"{reader.name}: HTTP 503")
+        return {"": self.answers[(reader.name, image.name)]}
+
+    def extractor(self, readers=None):
+        return extract.Extractor(self.connect, self.inbox, readers or self.readers, MASTER, call=self.fake_call)
+
+    def rows(self):
+        with self.connect() as conn:
+            return {(r["source_file"], r["skill"]): dict(r) for r in conn.execute("SELECT * FROM skills")}
+
+    def test_list_shots_reads_strategy_and_tier_from_folders(self):
+        write(self.inbox / self.EV / "3_sashi" / "old.png", "img")  # 区分フォルダなし
+        write(self.inbox / self.EV / "notes" / "x.png", "img")       # 脚質でないフォルダは無視
+        shots = extract.list_shots(self.inbox, self.EV)
+        self.assertEqual([(s.file, s.strategy, s.tier) for s in shots], [
+            ("a1.png", "逃げ", "super_recommended"), ("a2.png", "逃げ", "recommended"),
+            ("b1.png", "先行", "super_recommended"), ("old.png", "差し", None)])
+
+    def test_votes_unanimous_and_minority(self):
+        ex = self.extractor()
+        self.assertEqual(ex.estimate(self.EV)["requests"], 9)
+        job = ex.start(self.EV, self.RACE, wait=True)
+        self.assertEqual((job.state, job.done, job.requests, job.errors), ("finished", 3, 9, []))
+        rows = self.rows()
+        self.assertEqual((rows[("a1.png", "末脚")]["votes"], rows[("a1.png", "末脚")]["readers"]), (3, 3))
+        self.assertEqual((rows[("a1.png", "コーナー回復○")]["votes"], rows[("a1.png", "コーナー回復○")]["read_by"]), (1, "gemini"))
+        self.assertEqual(rows[("a1.png", "謎スキル")]["votes"], 1)
+        circle = rows[("a2.png", "左回り○")]   # 丸の表記ゆれは同じスキルとして数える
+        self.assertEqual((circle["votes"], circle["tier"], circle["strategy"], circle["race"]), (3, "recommended", "逃げ", self.RACE))
+        with self.connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM skills WHERE strategy = '先行'").fetchone()[0], 1)
+            data = review.group(conn, MASTER, self.EV, self.RACE, "逃げ")
+        attention = {r["skill"]: r["attention"] for im in data["images"] for r in im["rows"]}
+        self.assertEqual(attention["末脚"], [])
+        self.assertEqual(attention["左回り◎"], [])   # 全モデル一致なら◎でも要注意にしない
+        self.assertTrue(any("3モデル中1モデルだけ" in a for a in attention["コーナー回復○"]))
+        self.assertTrue(any("マスタにない" in a for a in attention["謎スキル"]))
+
+    def test_failed_reader_is_retried_alone_and_votes_are_updated(self):
+        self.failing = {("grok", "b1.png")}
+        ex = self.extractor()
+        job = ex.start(self.EV, self.RACE, wait=True)
+        self.assertEqual(len(job.errors), 1)
+        with self.connect() as conn:
+            row = conn.execute("SELECT votes, readers FROM skills WHERE strategy = '先行'").fetchone()
+            self.assertEqual((row["votes"], row["readers"]), (2, 3))   # 1モデル失敗 → 一致扱いにしない
+            pending = extract.captures(conn, self.inbox, [r.name for r in self.readers])[0]["pending"]
+        self.assertEqual(pending, 1)
+        self.failing, self.calls = set(), []
+        self.assertEqual(ex.estimate(self.EV), ex.estimate(self.EV) | {"images": 1, "requests": 1})
+        ex.start(self.EV, self.RACE, wait=True)
+        self.assertEqual(self.calls, [("grok", "b1.png")])
+        with self.connect() as conn:
+            self.assertEqual(conn.execute("SELECT votes FROM skills WHERE strategy = '先行'").fetchone()[0], 3)
+        with self.assertRaises(extract.ExtractError):   # もう読む画像がない
+            ex.start(self.EV, self.RACE, wait=True)
+
+    def test_rerun_keeps_manual_review(self):
+        ex = self.extractor()
+        ex.start(self.EV, self.RACE, wait=True)
+        with self.connect() as conn, conn:
+            conn.execute("UPDATE skills SET status = 'ready', skill = '直した名前' WHERE extracted_skill = '謎スキル'")
+        ex.start(self.EV, self.RACE, force=True, wait=True)
+        row = next(r for r in self.rows().values() if r["extracted_skill"] == "謎スキル")
+        self.assertEqual((row["status"], row["skill"]), ("ready", "直した名前"))
+
+    def test_start_validates_race_readers_and_keys(self):
+        ex = self.extractor()
+        for bad in ("京都芝3000m", "京都 芝 3050m", "ロンシャン 芝 2400m"):
+            with self.assertRaises(extract.ExtractError):
+                ex.start(self.EV, bad, wait=True)
+        with self.assertRaises(extract.ExtractError):
+            extract.Extractor(self.connect, self.inbox, [], MASTER, call=self.fake_call).start(self.EV, self.RACE)
+        nokey = [extract.Reader("x", "https://example.invalid", "m", key_file=Path(self.tmp.name) / "none")]
+        with self.assertRaises(extract.ExtractError):
+            self.extractor(nokey).start(self.EV, self.RACE, wait=True)
+        self.assertEqual(self.calls, [])
+
+    def test_tierless_images_use_headings_from_the_model(self):
+        write(self.inbox / "old-ev" / "1_nige" / "o.png", "img")
+        calls = lambda reader, image, tiered: {"super_recommended": ["末脚"], "recommended": ["左回り○"], "unknown": []}  # noqa: E731
+        ex = extract.Extractor(self.connect, self.inbox, self.readers[:2], MASTER, call=calls)
+        ex.start("old-ev", self.RACE, wait=True)
+        with self.connect() as conn:
+            got = {r["skill"]: r["tier"] for r in conn.execute("SELECT skill, tier FROM skills WHERE event = 'old-ev'")}
+        self.assertEqual(got, {"末脚": "super_recommended", "左回り○": "recommended"})
+
+    def test_missing_cells_warns_about_forgotten_captures(self):
+        with self.connect() as conn:
+            capture = extract.captures(conn, self.inbox, ["gemini"])[0]
+        self.assertEqual((capture["images"], capture["pending"]), (3, 3))
+        self.assertIn("先行 おすすめ", capture["missing"])
+        self.assertIn("追込 超おすすめ", capture["missing"])
+        self.assertNotIn("逃げ 超おすすめ", capture["missing"])
+
+    def test_misread_name_counts_as_a_vote_for_the_similar_known_skill(self):
+        rows = extract.tally({"a": ["コーナー回復○", "末脚"], "b": ["コーナ回復○", "末脚"], "c": ["コーナー回復○", "謎"]}, MASTER)
+        got = {r["skill"]: (r["votes"], r["read_by"]) for r in rows}
+        self.assertEqual(got["コーナー回復○"], (3, ["a", "c", "b"]))   # bの誤読も同じスキルへの票
+        self.assertNotIn("コーナ回復○", got)
+        self.assertEqual(got["謎"][0], 1)                              # 似たスキルがなければ別の行のまま
+        # 同じモデルが両方読んでいる場合は別のスキルなので、まとめない
+        both = extract.tally({"a": ["コーナー回復○", "コーナ回復○"]}, MASTER)
+        self.assertEqual(len(both), 2)
+
+    def test_parse_names_accepts_common_reply_shapes(self):
+        self.assertEqual(extract.parse_names('["末脚", "左回り○", "末脚"]', False), {"": ["末脚", "左回り○"]})
+        self.assertEqual(extract.parse_names('はい。\n```json\n["末脚"]\n```', False), {"": ["末脚"]})
+        self.assertEqual(extract.parse_names("1. 末脚\n- 左回り○", False), {"": ["末脚", "左回り○"]})
+        tiered = extract.parse_names('{"super_recommended": ["末脚"], "recommended": []}', True)
+        self.assertEqual(tiered["super_recommended"], ["末脚"])
+        with self.assertRaises(extract.ExtractError):
+            extract.parse_names("読めませんでした", True)
+
+    def test_call_reader_sends_image_and_never_leaks_the_key_in_errors(self):
+        image = self.inbox / self.EV / "1_nige" / "super" / "a1.png"
+        seen = {}
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self): return json.dumps({"choices": [{"message": {"content": '["末脚"]'}}]}).encode()
+
+        def opener(request, timeout):
+            seen["url"], seen["auth"] = request.full_url, request.get_header("Authorization")
+            seen["body"] = json.loads(request.data)
+            return Response()
+        self.assertEqual(extract.call_reader(self.readers[0], image, False, opener=opener), {"": ["末脚"]})
+        self.assertEqual((seen["url"], seen["auth"]), ("https://example.invalid/api/chat/completions", "Bearer secret"))
+        self.assertTrue(seen["body"]["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+
+        def refuse(request, timeout):
+            raise OSError("connection refused")
+        extract.time.sleep = lambda s: None
+        with self.assertRaises(extract.ExtractError) as caught:
+            extract.call_reader(self.readers[0], image, False, opener=refuse)
+        self.assertNotIn("secret", str(caught.exception))
+
+    def test_config_reads_readers(self):
+        cfg_path = write(Path(self.tmp.name) / "c.toml", '''data_root = "data"
+[[readers]]
+name = "gemini"
+base_url = "https://example.invalid/openai"
+model = "m1"
+key_env = "GEMINI_API_KEY"
+min_interval = 4
+[[readers]]
+name = "claude"
+base_url = "https://example.invalid/api"
+model = "m2"
+key_file = "keys/friend"
+''')
+        cfg = load_config(cfg_path)
+        self.assertEqual([(r.name, r.min_interval) for r in cfg.readers], [("gemini", 4.0), ("claude", 0.0)])
+        self.assertEqual(cfg.readers[1].key_file, Path(self.tmp.name).resolve() / "keys" / "friend")
+        self.assertEqual(cfg.inbox_dir, Path(self.tmp.name).resolve() / "data" / "screenshots" / "inbox")
+        bad = write(Path(self.tmp.name) / "bad.toml", '[[readers]]\nname = "x"\nbase_url = "u"\nmodel = "m"\n')
+        with self.assertRaises(ValueError):
+            load_config(bad)
 
 
 if __name__ == "__main__":

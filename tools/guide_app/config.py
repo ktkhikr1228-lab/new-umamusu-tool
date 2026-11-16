@@ -6,6 +6,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from .extract import Reader
+
 APP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = APP_DIR.parents[1]
 DEFAULT_CONFIG_PATH = APP_DIR / "config.toml"
@@ -24,11 +26,32 @@ class Config:
     import_interval: int = 300  # 抽出CSVを自動で取り込む間隔(秒)。0で無効
     token_file: Path = Path("~/.config/uma-tool/github_token")  # Actions起動用(既存のものを使う)
     race_data_url: str = ""  # 空ならGitHub mainの race_data.json
+    inbox_dir: Path = Path("inbox")  # 撮影画像の置き場所(<イベント>/<脚質>/<区分>/)
+    readers: tuple[Reader, ...] = ()  # 読み取りに使うモデル(2つ以上で多数決)
 
 
 def _path(value: object, base: Path) -> Path:
     path = Path(str(value)).expanduser()
     return path if path.is_absolute() else base / path
+
+
+def _readers(raw: object, base: Path) -> tuple[Reader, ...]:
+    readers = []
+    for item in raw if isinstance(raw, list) else []:
+        missing = [k for k in ("name", "base_url", "model") if not item.get(k)]
+        if missing:
+            raise ValueError(f"[[readers]] に {', '.join(missing)} がありません")
+        if not item.get("key_file") and not item.get("key_env"):
+            raise ValueError(f"[[readers]] {item['name']}: key_file か key_env のどちらかが必要です")
+        readers.append(Reader(
+            name=str(item["name"]), base_url=str(item["base_url"]), model=str(item["model"]),
+            key_file=_path(item["key_file"], base) if item.get("key_file") else None,
+            key_env=str(item.get("key_env", "")),
+            min_interval=float(item.get("min_interval", 0)), timeout=int(item.get("timeout", 120)),
+        ))
+    if len({r.name for r in readers}) != len(readers):
+        raise ValueError("[[readers]] の name が重複しています")
+    return tuple(readers)
 
 
 def load_config(path: Path | None = None, overrides: dict | None = None) -> Config:
@@ -45,6 +68,7 @@ def load_config(path: Path | None = None, overrides: dict | None = None) -> Conf
 
     base = Path(path).resolve().parent if path is not None else Path.cwd()
     data_root = _path(raw.get("data_root", DEFAULT_DATA_ROOT), base)
+    screenshots_dir = _path(raw.get("screenshots_dir", data_root / "screenshots"), base)
     return Config(
         data_root=data_root,
         extracted_dir=_path(raw.get("extracted_dir", data_root / "extracted"), base),
@@ -58,4 +82,6 @@ def load_config(path: Path | None = None, overrides: dict | None = None) -> Conf
         import_interval=int(raw.get("import_interval", 300)),
         token_file=Path(str(raw.get("token_file", "~/.config/uma-tool/github_token"))).expanduser(),
         race_data_url=str(raw.get("race_data_url", "")),
+        inbox_dir=_path(raw.get("inbox_dir", screenshots_dir / "inbox"), base),
+        readers=_readers(raw.get("readers"), base),
     )

@@ -18,3 +18,26 @@ import_interval = 300
 
 # 公開依頼(GitHub Actions起動)に使うトークン。既存の公開スクリプトと同じファイル
 # token_file = "~/.config/uma-tool/github_token"
+
+# ---- スクショの読み取り(複数モデルの多数決) ----
+# 撮影画像の置き場所。<イベント>/<脚質>/<区分>/ の形で入っている場所
+# inbox_dir = "/home/katao/uma-guide-data/screenshots/inbox"
+
+# 読み取りに使うモデルを [[readers]] で並べる。2つ以上で多数決になる(3つがおすすめ)。
+# OpenAI互換のAPI(<base_url>/chat/completions)で、画像を読めるモデルを指定する。
+# APIキーはファイルに置いて key_file で指す(このファイルやリポジトリには書かない)。環境変数なら key_env。
+
+# Gemini(OpenAI互換の入口)
+# [[readers]]
+# name = "gemini"
+# base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+# model = "gemini-3.5-flash-lite"
+# key_file = "~/.config/uma-tool/gemini_api_key"
+# min_interval = 5        # 無料枠の回数制限に当たるときは、呼び出しの間隔(秒)を空ける
+
+# Open WebUI など、OpenAI互換のAPIを持つサーバ(同じサーバの別モデルを2つ並べてもよい)
+# [[readers]]
+# name = "claude"
+# base_url = "https://example.com/api"
+# model = "claude-opus-5.5"
+# key_file = "~/.config/uma-tool/webui_api_key"
