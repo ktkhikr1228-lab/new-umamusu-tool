@@ -37,6 +37,13 @@ def _path(value: object, base: Path) -> Path:
     return path if path.is_absolute() else base / path
 
 
+def _header_name(value: object, reader: str) -> str:
+    name = str(value).strip()
+    if not name or not all(c.isalnum() or c in "-_" for c in name):
+        raise ValueError(f"[[readers]] {reader}: key_header が不正です")
+    return name
+
+
 def _readers(raw: object, base: Path) -> tuple[Reader, ...]:
     readers = []
     for item in raw if isinstance(raw, list) else []:
@@ -49,6 +56,7 @@ def _readers(raw: object, base: Path) -> tuple[Reader, ...]:
             name=str(item["name"]), base_url=str(item["base_url"]), model=str(item["model"]),
             key_file=_path(item["key_file"], base) if item.get("key_file") else None,
             key_env=str(item.get("key_env", "")),
+            key_header=_header_name(item.get("key_header", "Authorization"), item["name"]),
             min_interval=float(item.get("min_interval", 0)), timeout=int(item.get("timeout", 120)),
         ))
     if len({r.name for r in readers}) != len(readers):

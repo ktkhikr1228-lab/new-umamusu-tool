@@ -575,6 +575,12 @@ class GuideAppExtractTests(unittest.TestCase):
         self.assertEqual((seen["url"], seen["auth"]), ("https://example.invalid/api/chat/completions", "Bearer secret"))
         self.assertTrue(seen["body"]["messages"][0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
+        gateway = extract.Reader("gw", "https://example.invalid/v1", "m", key_file=Path(self.tmp.name) / "key",
+                                 key_header="X-Gravitee-Api-Key")
+        extract.call_reader(gateway, image, opener=opener)
+        self.assertIsNone(seen["auth"])   # 専用ヘッダーのときはAuthorizationを送らない
+        self.assertEqual(gateway.auth_headers(), {"X-Gravitee-Api-Key": "secret"})
+
         def refuse(request, timeout):
             raise OSError("connection refused")
         extract.time.sleep = lambda s: None

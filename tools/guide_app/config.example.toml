@@ -41,6 +41,14 @@ import_interval = 300
 # key_file = "~/.config/uma-tool/gemini_api_key"
 # min_interval = 5        # 無料枠の回数制限に当たるときは、呼び出しの間隔(秒)を空ける
 
+# キーを専用のヘッダーで渡すゲートウェイ(LiteLLMの前段など)は key_header でヘッダー名を指定する
+# [[readers]]
+# name = "gpt"
+# base_url = "https://example.com/gateway/litellm/v1"
+# model = "gpt-6.1-sol"
+# key_file = "~/.config/uma-tool/gateway_api_key"
+# key_header = "X-Gravitee-Api-Key"
+
 # Open WebUI など、OpenAI互換のAPIを持つサーバ(同じサーバの別モデルを2つ並べてもよい)
 # [[readers]]
 # name = "claude"

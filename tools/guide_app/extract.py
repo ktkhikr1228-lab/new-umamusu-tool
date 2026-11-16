@@ -59,6 +59,7 @@ class Reader:
     model: str
     key_file: Path | None = None
     key_env: str = ""
+    key_header: str = "Authorization"   # キーを渡すヘッダー名。Authorization以外なら「Bearer 」を付けずにそのまま送る
     min_interval: float = 0.0   # 連続で呼ぶときの最低間隔(秒)。無料枠の回数制限向け
     timeout: int = 120
 
@@ -73,6 +74,12 @@ class Reader:
             if value:
                 return value
         raise ExtractError(f"{self.name}: APIキーが設定されていません")
+
+    def auth_headers(self) -> dict[str, str]:
+        key = self.key()
+        if self.key_header.lower() == "authorization":
+            return {"Authorization": "Bearer " + key}
+        return {self.key_header: key}
 
 
 @dataclass(frozen=True)
@@ -233,8 +240,7 @@ def call_reader(reader: Reader, image: Path, opener=urllib.request.urlopen) -> d
     }).encode("utf-8")
     request = urllib.request.Request(
         reader.base_url.rstrip("/") + "/chat/completions", data=body, method="POST",
-        headers={"Authorization": "Bearer " + reader.key(), "Content-Type": "application/json",
-                 "User-Agent": "guide-app-extract"})
+        headers={**reader.auth_headers(), "Content-Type": "application/json", "User-Agent": "guide-app-extract"})
     last_error = "不明なエラー"
     for attempt in range(3):
         try:
