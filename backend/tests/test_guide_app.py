@@ -586,6 +586,12 @@ class GuideAppExtractTests(unittest.TestCase):
         self.assertEqual(len(started), 3)
         self.assertTrue(all(g >= 0.04 for g in gaps), gaps)
 
+    def test_half_and_full_width_punctuation_count_as_the_same_skill(self):
+        master = SkillMaster(["かっとばせ！", "末脚"])
+        self.assertEqual(master.canonical("かっとばせ!"), "かっとばせ！")
+        rows = extract.tally({"gemini": ["かっとばせ！"], "gpt": ["かっとばせ！"], "claude": ["かっとばせ!"]}, master)
+        self.assertEqual([(r["skill"], r["votes"]) for r in rows], [("かっとばせ！", 3)])
+
     def test_similar_names_are_never_merged_into_one_vote(self):
         # 似た名前を同じスキルの票として数えると、○と◎の取り違えが多数決を通ってしまう
         rows = extract.tally({"a": ["左回り○"], "b": ["左回り◎"], "c": ["左回りO"]}, MASTER)

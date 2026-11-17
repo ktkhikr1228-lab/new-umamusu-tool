@@ -5,12 +5,14 @@ import difflib
 import json
 from pathlib import Path
 
-_CIRCLES = str.maketrans({"◯": "○", "〇": "○"})
+# 同じ文字の書き方の違いだけをそろえる。○・◯・〇、半角と全角の「!」「?」「~」は同じ字として扱う。
+# ◎ は別のスキルなので、○ とは区別したまま。(マスタ1953件で、この揃え方で別々の名前が重なる組がないことを確認済み)
+_FOLD = str.maketrans({"◯": "○", "〇": "○", "!": "！", "?": "？", "~": "〜", "～": "〜"})
 
 
 def normalize(name: str) -> str:
-    """公開スクリプトと同じ規則。○・◯・〇は同一視し、◎は別扱い。"""
-    return name.strip().translate(_CIRCLES)
+    """照合用の名前。表記のゆれ(丸の字形、半角・全角の記号)だけをそろえる。"""
+    return name.strip().translate(_FOLD)
 
 
 class SkillMaster:
