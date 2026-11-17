@@ -300,7 +300,8 @@ function renderReview() {
   </div>
   <div class="strip">
     ${list.map((x, i) => {
-      const warn = x.warning || x.rows.some((r) => isMain(r) && r.status === "draft");
+      // 赤丸 = まだ片付いていないもの(要確認の行、または確認前の「撮影時の設定と食い違う」画像)
+      const warn = (x.warning && !x.reviewed_at) || x.rows.some((r) => isMain(r) && r.status === "draft");
       const t = x.tier ? (x.tier === "super_recommended" ? "超" : "お") : "混";
       return `<button class="thumb ${x.reviewed_at ? "done" : ""} ${i === state.cur ? "cur" : ""} ${state.selected.has(x.file) ? "sel" : ""}"
         data-act="thumb" data-i="${i}" title="${esc(x.file)}">${i + 1}<span class="tt">${t}</span>${warn ? '<span class="dot"></span>' : ""}</button>`;
@@ -339,8 +340,9 @@ function imagePanel(im) {
   const pendingMain = main.filter((r) => r.status === "draft").length;
   const published = matched.filter((r) => r.published === "same").length;
   return `
-    ${im.warning ? `<div class="imgwarn">撮影時の設定と画像の中身が食い違っています: ${esc(im.warning)}<br>
-      <span class="small">区分の間違いは下の「この画像の区分」で直せます。脚質やコースが違う場合は、この画像の行を却下して撮り直してください。</span></div>` : ""}
+    ${im.warning && !im.reviewed_at ? `<div class="imgwarn">撮影時の設定と画像の中身が食い違っています: ${esc(im.warning)}<br>
+      <span class="small">区分の間違いは下の「この画像の区分」で直してから「この画像OK」を押してください。脚質やコースが違う場合は、この画像の行を却下して撮り直してください。</span></div>`
+      : im.warning ? `<div class="small muted" style="margin-bottom:8px">読み取り時の注意(確認済み): ${esc(im.warning)}</div>` : ""}
     <div class="imgtier">この画像の区分 ${tierSelect("img-tier", null, im.tier, true)}
       <span class="muted small">撮影時の区分切り替え忘れを直すとき用</span></div>
     <div class="rows">
