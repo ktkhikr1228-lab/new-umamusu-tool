@@ -1,0 +1,123 @@
+name: Update skill master
+
+# スキル名の一覧(frontend/src/data/skill_master.json)を、GameToraの最新データから作り直す。
+# 公開依頼の検証と、ラズパイの確認アプリの名前照合が、この一覧を使う。新しいスキルが追加されたのに
+# 一覧が古いままだと、正しいスキル名が「Unknown skill」で弾かれる。
+#
+# サイトの表示には影響しないデータなので、次の条件をすべて満たすときだけ、PRを自動でマージする。
+#   - 追加だけ(削除・名前の変更が0件)
+#   - 追加が400件以内
+#   - 名前が空・重複・長すぎ・制御文字入りではない
+# 満たさない場合は、PRを開いたままにして、理由を実行結果の要約に出す(人が確認してマージする)。
+# サポカのデータ(cards.json など)は、このワークフローでは扱わない(update-gametora-data.yml のまま、人がマージ)。
+
+on:
+  workflow_dispatch:
+  schedule:
+    # UTC 03:45, 09:45 = JST 12:45, 18:45(update-gametora-data.yml のあと)
+    - cron: "45 3,9 * * *"
+
+concurrency:
+  group: skill-master-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run safety-checker tests
+        run: python -m unittest discover -s backend/tests -p "test_*skill_master*.py" -v
+
+      - name: Rebuild skill_master.json from GameTora
+        # 件数が既存より5%以上減る場合は、書き換えずにここで失敗して止まる(shell: bash は、パイプの途中の失敗も検知する)
+        shell: bash
+        run: python backend/tools/build_skill_master.py --download-latest | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Check whether the master changed
+        id: changes
+        shell: bash
+        run: |
+          if git diff --quiet -- frontend/src/data/skill_master.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "スキルマスタに変更はありません。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check that the change is safe to merge automatically
+        id: safety
+        if: steps.changes.outputs.changed == 'true'
+        shell: bash
+        run: |
+          git show HEAD:frontend/src/data/skill_master.json > "$RUNNER_TEMP/skill_master.before.json"
+          if python backend/tools/check_skill_master_change.py \
+              --before "$RUNNER_TEMP/skill_master.before.json" \
+              --after frontend/src/data/skill_master.json > "$RUNNER_TEMP/safety.txt"; then
+            echo "safe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "safe=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$RUNNER_TEMP/safety.txt"
+          cat "$RUNNER_TEMP/safety.txt" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "report<<EOF"
+            cat "$RUNNER_TEMP/safety.txt"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update the master PR
+        id: pr
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          commit-message: "Update skill_master.json from GameTora"
+          title: "data: スキルマスタを更新(GameTora)"
+          body: |
+            GameToraの最新のスキルデータから、`frontend/src/data/skill_master.json` を作り直しました(自動)。
+
+            判定: ${{ steps.safety.outputs.report }}
+
+            ${{ steps.safety.outputs.safe == 'true' && '追加だけの安全な変更なので、このPRは自動でマージされます。' || '人の確認が必要な変更です。内容を見て、問題なければマージしてください。' }}
+
+            サイトの表示には影響しません(公開依頼の検証と、確認アプリの名前照合にだけ使われます)。
+          branch: data/skill-master-auto
+          base: main
+          delete-branch: true
+          add-paths: |
+            frontend/src/data/skill_master.json
+
+      - name: Merge the PR automatically
+        if: steps.pr.outputs.pull-request-number != '' && steps.pr.outputs.pull-request-operation != 'closed' && steps.safety.outputs.safe == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pull-request-number }}
+        run: |
+          if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --squash --delete-branch; then
+            echo "PR #$PR_NUMBER を自動でマージしました。" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # ブランチ保護などでマージできない場合は、PRを開いたままにして、人に任せる
+            echo "::warning::PR #$PR_NUMBER を自動でマージできませんでした。内容を確認して、手動でマージしてください。"
+            echo "PR #$PR_NUMBER は自動でマージできませんでした(ブランチ保護の設定など)。手動でマージしてください。" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Explain why the PR was left open
+        if: steps.pr.outputs.pull-request-number != '' && steps.safety.outputs.safe != 'true'
+        shell: bash
+        run: |
+          echo "PR #${{ steps.pr.outputs.pull-request-number }} は、人の確認が必要なため、自動ではマージしていません。" >> "$GITHUB_STEP_SUMMARY"
