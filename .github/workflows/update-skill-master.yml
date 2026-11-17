@@ -13,8 +13,13 @@ name: Update skill master
 
 on:
   workflow_dispatch:
+  # サポカのデータの更新(update-gametora-data.yml)が終わったら、続けて動く。
+  # ラズパイがGameToraの更新を見つけてデータの更新を依頼したとき、マスタもすぐ最新になる
+  workflow_run:
+    workflows: ["Update GameTora data"]
+    types: [completed]
   schedule:
-    # UTC 03:45, 09:45 = JST 12:45, 18:45(update-gametora-data.yml のあと)
+    # 取りこぼしの保険。UTC 03:45, 09:45 = JST 12:45, 18:45
     - cron: "45 3,9 * * *"
 
 concurrency:
