@@ -103,7 +103,13 @@ details.matched summary { cursor: pointer; color: var(--muted); font-size: 14px;
   border-top: 1px solid var(--line); font-size: 14px; }
 .mrow.rejected .nm { text-decoration: line-through; opacity: .5; }
 .allgood { background: var(--okbg); color: var(--ok); border-radius: 10px; padding: 12px; font-size: 14px; }
-.foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.actionbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; gap: 10px; align-items: center;
+  justify-content: center; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 12px #0003; }
+.actionbar .pos { color: var(--muted); font-size: 13px; min-width: 56px; text-align: center; }
+.bar-spacer { height: 84px; }
+.fix-item { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.fix-item img { display: block; width: 100%; max-height: 460px; object-fit: contain; border-radius: 6px; background: var(--shot); cursor: zoom-in; }
 .keys { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 2; }
 
 .zoom { position: fixed; inset: 0; background: #000d; z-index: 50; overflow: auto; cursor: zoom-out; }
@@ -113,6 +119,7 @@ details.matched summary { cursor: pointer; color: var(--muted); font-size: 14px;
 .toast.err { background: var(--warn); color: #fff; }
 
 @media (max-width: 860px) {
+  .fix-item { grid-template-columns: 1fr; }
   .review { grid-template-columns: 1fr; }
   .shot { position: static; }
   .shot img { max-height: 50vh; }

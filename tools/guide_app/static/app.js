@@ -47,6 +47,7 @@ async function route() {
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("on", a.dataset.nav === view));
   try {
     if (view === "review") return await showReview(params);
+    if (view === "fix") return await showFix(params);
     if (view === "publish") return await showPublish();
     return await showHome();
   } catch (e) {
@@ -54,9 +55,13 @@ async function route() {
   }
 }
 
-function reviewLink(event, race, strategy) {
-  return "#/review?" + qs({ event, race, strategy });
+function reviewLink(event, race, strategy, file) {
+  return "#/review?" + qs(file ? { event, race, strategy, file } : { event, race, strategy });
 }
+
+function fixLink(event) { return "#/fix?" + qs({ event }); }
+
+function rerender() { parseHash().view === "fix" ? renderFix() : renderReview(); }
 
 // ---------- ホーム ----------
 async function showHome() {
@@ -214,7 +219,8 @@ function eventCard(ev) {
         <h2>${esc(ev.event)}</h2>
         <div class="muted small">${ev.races.map((r) => esc(r.race)).join("・")} ・ 画像 ${ev.images}枚(確認済み ${ev.images_reviewed})・ ${ev.total}行</div>
       </div>
-      ${next ? `<a class="btn primary" href="${next}">続きを確認する</a>` : `<span class="chip ok">確認が必要な行なし</span>`}
+      ${ev.todo ? `<a class="btn primary" href="${fixLink(ev.event)}">要修正をまとめて直す</a>` : ""}
+      ${next ? `<a class="btn" href="${next}">画像ごとに確認</a>` : `<span class="chip ok">確認が必要な行なし</span>`}
       <button class="btn sm" data-act="event-hidden" data-event="${esc(ev.event)}" data-v="1" title="テスト用などのイベントを隠す(データは消えません)">非表示</button>
     </div>
     <div class="bar"><i style="width:${pct(ev.ready)};background:var(--ok)"></i><i style="width:${pct(ev.rejected)};background:var(--ng)"></i></div>
@@ -246,7 +252,7 @@ async function showReview(params) {
   remember("guide.lastReview", location.hash);
   document.getElementById("nav-review").href = location.hash;
   if (changed) Object.assign(state, { cur: 0, selected: new Set(), anchor: null, focus: 0, editing: null });
-  await loadGroup();
+  await loadGroup(changed ? params.file : undefined);
 }
 
 async function loadGroup(keepFile) {
@@ -286,6 +292,7 @@ function renderReview() {
   <div class="crumbs">
     <a href="#/"><strong>${esc(g.event)}</strong></a><span class="muted">›</span><span>${esc(g.race)}</span>
     <div class="seg">${strategyLinks}</div>
+    <a class="btn sm" href="${fixLink(g.event)}">要修正の一覧</a>
     <div class="seg" style="margin-left:auto">
       <button class="${state.filter === "all" ? "on" : ""}" data-act="filter" data-v="all">すべての画像 ${all.length}</button>
       <button class="${state.filter === "attention" ? "on" : ""}" data-act="filter" data-v="attention">未完了 ${todo}</button>
@@ -311,14 +318,12 @@ function renderReview() {
     <div class="shot">
       ${im.found ? `<img src="${imgUrl}" alt="${esc(im.file)}" data-act="zoom">`
                  : `<div class="missing">画像ファイルが見つかりません<br><span class="small">${esc(im.file)}</span></div>`}
-      <div class="cap">
-        <button data-act="prev" ${state.cur === 0 ? "disabled" : ""}>‹ 前</button>
-        <span>${state.cur + 1} / ${list.length} ・ ${esc(im.file)}${im.reviewed_at ? " ・ 確認済み" : ""}</span>
-        <button data-act="next" ${state.cur >= list.length - 1 ? "disabled" : ""}>次 ›</button>
-      </div>
+      <div class="cap"><span>${esc(im.file)}${im.reviewed_at ? " ・ 確認済み" : ""}</span></div>
     </div>
     <div>${imagePanel(im)}</div>
-  </div>` : `<div class="card">${state.filter === "attention" ? "未完了の画像はありません。おつかれさまでした。" : "画像がありません"}</div>`}`;
+  </div>
+  <div class="bar-spacer"></div>
+  ${actionBar(im, list)}` : `<div class="card">${state.filter === "attention" ? "未完了の画像はありません。おつかれさまでした。" : "画像がありません"}</div>`}`;
   focusRow(false);
 }
 
@@ -353,11 +358,19 @@ function imagePanel(im) {
         <button class="btn sm" data-act="row-status" data-id="${r.id}" data-v="${r.status === "rejected" ? "draft" : "rejected"}">${r.status === "rejected" ? "戻す" : "除外"}</button>
       </div>`).join("")}
     </details>` : ""}
-    <div class="foot">
-      <button class="btn primary" data-act="confirm">この画像OK・次へ <kbd>Space</kbd></button>
-      ${pendingMain ? `<span class="small" style="color:var(--warn)">要確認の行が ${pendingMain} 件残っています(OKにするまで公開されません)</span>` : ""}
-    </div>
     <div class="keys"><kbd>←</kbd><kbd>→</kbd> 画像の移動 ・ <kbd>↑</kbd><kbd>↓</kbd> 行の選択 ・ <kbd>Enter</kbd> 行をOK ・ <kbd>X</kbd> 行を却下 ・ 画像クリックで拡大</div>`;
+}
+
+// 画面の下に固定する操作バー(行の数で位置が動かないように)
+function actionBar(im, list) {
+  const pending = im.rows.filter((r) => isMain(r) && r.status === "draft").length;
+  return `<div class="actionbar">
+    <button class="btn" data-act="prev" ${state.cur === 0 ? "disabled" : ""}>‹ 前</button>
+    <span class="pos">${state.cur + 1} / ${list.length}</span>
+    <button class="btn" data-act="next" ${state.cur >= list.length - 1 ? "disabled" : ""}>次 ›</button>
+    <button class="btn primary" data-act="confirm">この画像OK・次へ <kbd>Space</kbd></button>
+    ${pending ? `<span class="small" style="color:var(--warn)">要確認の行が ${pending} 件(OKにするまで公開されません)</span>` : ""}
+  </div>`;
 }
 
 function rowHtml(r) {
@@ -395,10 +408,10 @@ function focusRow(scroll = true) {
 async function mutate(fn, okMessage) {
   if (state.busy) return;
   state.busy = true;
-  const im = currentImage();
+  const im = parseHash().view === "fix" ? null : currentImage();
   try {
     const result = await fn();
-    await loadGroup(im && im.file);
+    if (parseHash().view === "fix") await loadFix(); else await loadGroup(im && im.file);
     if (okMessage) toast(typeof okMessage === "function" ? okMessage(result) : okMessage);
   } catch (e) {
     toast(e.message, true);
@@ -440,6 +453,80 @@ function move(delta) {
   Object.assign(state, { cur: next, focus: 0, editing: null });
   renderReview();
   window.scrollTo(0, 0);
+}
+
+// ---------- 要修正の一覧 ----------
+// イベント全体から、人が1行ずつ見る行(マスタにない名前・要注意)だけを、画像と一緒に並べる。
+// 直した行は、この画面を開いている間は表示したまま残す(押し間違いをすぐ戻せるように)。
+async function showFix(params) {
+  if (!params.event) { location.hash = "#/"; return; }
+  if (!state.fix || state.fix.event !== params.event) {
+    Object.assign(state, { fixSeen: new Set(), fixFilter: "all", focus: 0, editing: null });
+  }
+  await loadFix(params.event);
+}
+
+async function loadFix(event) {
+  event = event || (state.fix && state.fix.event);
+  state.fix = await api("/api/attention?" + qs({ event }));
+  for (const im of state.fix.images) {
+    if (im.pending || (im.warning && !im.reviewed_at)) im.rows.forEach((r) => state.fixSeen.add(r.id));
+  }
+  renderFix();
+}
+
+function renderFix() {
+  const f = state.fix;
+  const shown = f.images.filter((im) => im.rows.some((r) => state.fixSeen.has(r.id)) || (im.warning && !im.reviewed_at));
+  const filtered = shown.filter((im) => state.fixFilter === "all" || im.strategy === state.fixFilter);
+  const pendingRows = f.images.reduce((n, im) => n + im.pending, 0);
+  const strategies = STRATEGIES.filter((s) => shown.some((im) => im.strategy === s));
+  $app.innerHTML = `
+  <div class="crumbs">
+    <a href="#/"><strong>${esc(f.event)}</strong></a><span class="muted">›</span><strong>要修正の一覧</strong>
+    <span class="chip ${pendingRows ? "warn" : "ok"}">残り ${pendingRows}行</span>
+    <div class="seg" style="margin-left:auto">
+      <button class="${state.fixFilter === "all" ? "on" : ""}" data-act="fix-filter" data-v="all">すべて</button>
+      ${strategies.map((s) => `<button class="${state.fixFilter === s ? "on" : ""}" data-act="fix-filter" data-v="${s}">${s}</button>`).join("")}
+    </div>
+  </div>
+  <div class="card small muted">直す必要のある行だけを並べています。正しければ ✓、誤読や重複は ✕、名前の間違いはプルダウンで直します。
+    画像はクリックで拡大できます。全部片付いたら、いちばん下のボタンで残りの画像をまとめて確認済みにできます。
+    <div class="keys"><kbd>↑</kbd><kbd>↓</kbd> 行の選択 ・ <kbd>Enter</kbd> 行をOK ・ <kbd>X</kbd> 行を却下</div></div>
+  ${filtered.map((im) => {
+    const url = "/api/image?" + qs({ event: f.event, file: im.file });
+    const rows = im.rows.filter((r) => state.fixSeen.has(r.id));
+    return `<div class="card fix-item">
+      <div>${im.found ? `<img src="${url}" alt="${esc(im.file)}" data-act="zoom" loading="lazy">` : `<div class="missing">画像ファイルが見つかりません</div>`}
+        <div class="small muted" style="margin-top:6px">${esc(im.race)} ・ ${esc(im.strategy)} ・ ${esc(im.file)}
+          ・ <a href="${reviewLink(f.event, im.race, im.strategy, im.file)}">この画像を開く</a></div></div>
+      <div>
+        ${im.warning ? `<div class="imgwarn">撮影時の設定と画像の中身が食い違っています: ${esc(im.warning)}
+          <br><span class="small">「この画像を開く」から、区分の変更や撮り直しの判断をしてください。</span></div>` : ""}
+        <div class="rows">${rows.map(rowHtml).join("")}</div>
+      </div>
+    </div>`;
+  }).join("") || `<div class="card">直す必要のある行はありません。</div>`}
+  <div class="card evhead">
+    <div>${pendingRows ? `<span style="color:var(--warn)">まだ ${pendingRows}行 残っています。</span>残っている画像は、まとめての確認から外します。`
+      : "要修正はすべて片付きました。"}
+      <div class="small muted">残りの画像の「マスタと合致した行」をまとめてOKにして、画像を確認済みにします。</div></div>
+    <button class="btn primary" data-act="review-event">要修正のない画像をまとめて確認済みにする</button>
+  </div>`;
+  focusRow(false);
+}
+
+async function reviewEvent() {
+  const event = state.fix.event;
+  if (!confirm("要修正の行が残っていない画像について、マスタと合致した行をまとめてOKにし、確認済みにします。\n" +
+    "スクショを1枚ずつ見比べる確認は省略されます(読み落としは画像ごとの確認でしか気づけません)。よろしいですか?")) return;
+  try {
+    const r = await api("/api/review-event", { event });
+    toast(`${r.images}枚を確認済みにしました(${r.approved}行をOK)` + (r.skipped ? `。要修正が残る ${r.skipped}枚は飛ばしました` : ""));
+    await loadFix(event);
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 // ---------- 公開 ----------
@@ -552,6 +639,10 @@ document.addEventListener("click", (ev) => {
     updateRow(Number(id), { status: v });
   } else if (act === "confirm") {
     confirmImage();
+  } else if (act === "review-event") {
+    reviewEvent();
+  } else if (act === "fix-filter") {
+    state.fixFilter = v; renderFix();
   } else if (act === "prev" || act === "next") {
     move(act === "prev" ? -1 : 1);
   } else if (act === "zoom") {
@@ -568,12 +659,12 @@ document.addEventListener("change", (ev) => {
   if (act === "row-tier") updateRow(Number(id), { tier: el.value });
   else if (act === "img-tier" && el.value) setImagesTier([currentImage().file], el.value);
   else if (act === "row-name") {
-    if (el.value === "__input") { state.editing = Number(id); renderReview(); document.querySelector("input.name")?.focus(); }
+    if (el.value === "__input") { state.editing = Number(id); rerender(); document.querySelector("input.name")?.focus(); }
     else updateRow(Number(id), { skill: el.value, status: "ready" });
   } else if (act === "row-name-input") {
     state.editing = null;
     if (el.value.trim()) updateRow(Number(id), { skill: el.value.trim(), status: "ready" });
-    else renderReview();
+    else rerender();
   }
 });
 
@@ -584,15 +675,17 @@ document.addEventListener("toggle", (ev) => {
 document.addEventListener("keydown", (ev) => {
   const z = document.getElementById("zoom");
   if (!z.hidden && ev.key === "Escape") { z.hidden = true; return; }
-  if (parseHash().view !== "review" || !state.group) return;
+  const view = parseHash().view;
+  if (!((view === "review" && state.group) || (view === "fix" && state.fix))) return;
   if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) {
-    if (ev.key === "Escape") { state.editing = null; document.activeElement.blur(); renderReview(); }
+    if (ev.key === "Escape") { state.editing = null; document.activeElement.blur(); rerender(); }
     return;
   }
   if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
   const rows = [...document.querySelectorAll(".row[data-row]")];
   const focused = rows[state.focus] && Number(rows[state.focus].dataset.row);
   const key = ev.key;
+  if (view === "fix" && (key === "ArrowRight" || key === "ArrowLeft" || key === " ")) return;
   if (key === "ArrowRight") move(1);
   else if (key === "ArrowLeft") move(-1);
   else if (key === "ArrowDown" && rows.length) { state.focus += 1; focusRow(); }

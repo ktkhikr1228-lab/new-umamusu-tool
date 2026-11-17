@@ -149,6 +149,52 @@ def group(conn: sqlite3.Connection, master: SkillMaster, event: str, race: str, 
     return {"event": event, "race": race, "strategy": strategy, "images": list(images.values())}
 
 
+def is_main(row: dict) -> bool:
+    """人が1行ずつ見る行か(マスタにない名前、または要注意の理由がある)。"""
+    return not row["known"] or bool(row["attention"])
+
+
+def attention_list(conn: sqlite3.Connection, master: SkillMaster, event: str, published=None) -> list[dict]:
+    """要修正の一覧用: イベント全体から、人が1行ずつ見る行を画像ごとに集める(状態を問わず。未確認かどうかは画面で絞る)。"""
+    items = []
+    groups = conn.execute("SELECT DISTINCT race, strategy FROM skills WHERE event = ?", (event,)).fetchall()
+    for g in groups:
+        data = group(conn, master, event, g["race"], g["strategy"], published)
+        for im in data["images"]:
+            rows = [r for r in im["rows"] if is_main(r)]
+            if not rows and not im["warning"]:
+                continue
+            items.append({
+                "race": g["race"], "strategy": g["strategy"], "file": im["file"],
+                "warning": im["warning"], "reviewed_at": im["reviewed_at"], "rows": rows,
+                "pending": sum(1 for r in rows if r["status"] == "draft"),
+            })
+    items.sort(key=lambda x: (x["race"], STRATEGY_ORDER.get(x["strategy"], 9), x["file"]))
+    return items
+
+
+def review_event(conn: sqlite3.Connection, master: SkillMaster, event: str, published=None) -> dict:
+    """要修正が残っていない画像を、まとめて「この画像OK」にする(合致した未確認の行をOKにし、画像を確認済みにする)。
+
+    要修正の行が残っている画像と、撮影時の設定と食い違う未確認の画像は飛ばす。
+    """
+    approved = images = skipped = 0
+    groups = conn.execute("SELECT DISTINCT race, strategy FROM skills WHERE event = ?", (event,)).fetchall()
+    for g in groups:
+        data = group(conn, master, event, g["race"], g["strategy"], published)
+        for im in data["images"]:
+            pending = [r for r in im["rows"] if r["status"] == "draft" and is_main(r)]
+            if pending or (im["warning"] and not im["reviewed_at"]):
+                skipped += 1
+                continue
+            if im["reviewed_at"] and not any(r["status"] == "draft" for r in im["rows"]):
+                continue   # もう見るものがない
+            result = review_image(conn, master, event, im["file"], g["race"], g["strategy"], published)
+            approved += result["approved"]
+            images += 1
+    return {"images": images, "approved": approved, "skipped": skipped}
+
+
 def update_row(conn: sqlite3.Connection, row_id: int, changes: dict) -> dict:
     unknown = set(changes) - EDITABLE
     if unknown:

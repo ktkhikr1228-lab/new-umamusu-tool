@@ -218,6 +218,20 @@ class Handler(BaseHTTPRequestHandler):
             row = review.update_row(conn, int(row_id), self.read_json())
         self.send_json(row)
 
+    def get_attention(self, query):
+        event = query["event"]
+        with self.app.connect() as conn:
+            items = review.attention_list(conn, self.app.master, event, self.app.published)
+        for item in items:
+            item["found"] = self.app.images.find(event, item["file"]) is not None
+        self.send_json({"event": event, "images": items})
+
+    def post_review_event(self, query):
+        body = self.read_json()
+        with self.app.connect() as conn:
+            result = review.review_event(conn, self.app.master, str(body["event"]), self.app.published)
+        self.send_json(result)
+
     def post_review_image(self, query):
         body = self.read_json()
         with self.app.connect() as conn:
@@ -317,6 +331,8 @@ ROUTES = {
     ("GET", "/api/master"): Handler.get_master,
     ("GET", "/api/image"): Handler.get_image,
     ("POST", "/api/review-image"): Handler.post_review_image,
+    ("GET", "/api/attention"): Handler.get_attention,
+    ("POST", "/api/review-event"): Handler.post_review_event,
     ("POST", "/api/images-tier"): Handler.post_images_tier,
     ("POST", "/api/import"): Handler.post_import,
     ("POST", "/api/event-hidden"): Handler.post_event_hidden,

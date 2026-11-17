@@ -159,6 +159,22 @@ class GuideAppReviewTests(unittest.TestCase):
         self.assertIn("超おすすめ・おすすめの両方にある", rows[("2.png", "末脚", "recommended")]["attention"])
         self.assertEqual(rows[("2.png", "コーナー回復○", "recommended")]["attention"], [])
 
+    def test_attention_list_and_review_event(self):
+        items = review.attention_list(self.conn, MASTER, self.EV)
+        self.assertEqual([(i["file"], i["pending"]) for i in items], [("1.png", 4), ("2.png", 1)])
+        self.assertIn("謎スキル", [r["skill"] for r in items[0]["rows"]])
+        self.assertNotIn("コーナー回復○", [r["skill"] for r in items[1]["rows"]])   # 合致して問題のない行は一覧に出ない
+
+        # 要修正が残っている画像は、まとめての確認から外す
+        self.assertEqual(review.review_event(self.conn, MASTER, self.EV), {"images": 0, "approved": 0, "skipped": 2})
+        dup = next(r for r in items[1]["rows"] if r["skill"] == "末脚")
+        review.update_row(self.conn, dup["id"], {"status": "rejected"})            # 2.png の要修正を片付ける
+        self.assertEqual(review.review_event(self.conn, MASTER, self.EV), {"images": 1, "approved": 1, "skipped": 1})
+        rows = self.rows()
+        self.assertEqual(rows[("2.png", "コーナー回復○", "recommended")]["status"], "ready")
+        self.assertEqual(rows[("1.png", "末脚", "super_recommended")]["status"], "draft")    # 1.png は手つかずのまま
+        self.assertEqual(review.review_event(self.conn, MASTER, self.EV)["images"], 0)       # 2回目は何もしない
+
     def test_review_image_approves_only_matched_rows(self):
         result = review.review_image(self.conn, MASTER, self.EV, "2.png", self.RACE, self.STRAT)
         self.assertEqual(result, {"approved": 1, "pending": 1, "already_reviewed": False})
