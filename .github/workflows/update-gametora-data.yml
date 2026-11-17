@@ -38,14 +38,6 @@ jobs:
             --no-backup > "$RUNNER_TEMP/gametora-import.json"
           cat "$RUNNER_TEMP/gametora-import.json"
 
-      - name: Update skill_master.json from GameTora
-        # 新しいスキルが追加されたら、スキル名の一覧(マスター)も自動で作り直す。
-        # 公開依頼の検証と確認アプリの名前照合が、この一覧を使う。件数が急に減る場合は失敗して止まる。
-        run: |
-          skills_file="$(ls -t "$RUNNER_TEMP"/gametora-data/skills.*.json | head -n 1)"
-          echo "skills data: $skills_file"
-          python backend/tools/build_skill_master.py --input "$skills_file" | tee -a "$GITHUB_STEP_SUMMARY"
-
       - name: Research only cards with missing skills
         run: |
           python backend/tools/research_missing_card_skills.py \
@@ -67,7 +59,6 @@ jobs:
         run: |
           python -m json.tool frontend/src/data/cards.json > /dev/null
           python -m json.tool frontend/src/data/factor_skill_aliases.json > /dev/null
-          python -m json.tool frontend/src/data/skill_master.json > /dev/null
 
       - name: Check whether data changed
         id: changes
@@ -83,7 +74,6 @@ jobs:
           if git diff --quiet -- \
             frontend/src/data/cards.json \
             frontend/src/data/factor_skill_aliases.json \
-            frontend/src/data/skill_master.json \
             backend/data/missing_skill_research.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
@@ -116,7 +106,7 @@ jobs:
           commit-message: "Update GameTora support card data"
           title: "Update GameTora data and missing-skill research"
           body: |
-            Updated support-card data, factor-skill aliases and the skill-name master from GameTora.
+            Updated support-card data and factor-skill aliases from GameTora.
             Missing-skill cards are researched individually. See backend/data/missing_skill_research.json and the workflow summary for candidate skills and source URLs.
             Research candidates are unapproved and are not applied to cards.json.
           branch: data/gametora-update
@@ -124,5 +114,4 @@ jobs:
           add-paths: |
             frontend/src/data/cards.json
             frontend/src/data/factor_skill_aliases.json
-            frontend/src/data/skill_master.json
             backend/data/missing_skill_research.json

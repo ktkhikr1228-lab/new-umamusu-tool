@@ -7,6 +7,7 @@ on:
       - '.github/workflows/update-gametora-data.yml'
       - 'backend/tests/**'
       - 'backend/tools/build_skill_master.py'
+      - 'backend/tools/check_skill_master_change.py'
       - 'backend/data/reviewed_skill_supplements.json'
       - '.github/workflows/test-gametora-import.yml'
 permissions:
