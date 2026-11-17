@@ -11,6 +11,10 @@
   # race_data.json のスキル名がマスターに存在するか照合(誤認識チェック)
   python tools/build_skill_master.py --check
 
+取得が途切れた・壊れたデータで、マスターが急に小さくならないよう、既存より5%以上減る場合は
+書き換えずに失敗する(--max-shrink で変更、--allow-shrink で無効)。毎日のデータ更新の
+ワークフロー(.github/workflows/update-gametora-data.yml)からも、この仕組みで呼ばれる。
+
 出力: frontend/src/data/skill_master.json (スキル名のソート済み配列)
 """
 from __future__ import annotations
@@ -118,17 +122,35 @@ def check_against_master(master: set[str]) -> int:
     return 2
 
 
-def main() -> int:
+def shrink_error(existing: list[str], names: list[str], max_shrink: float) -> str | None:
+    """既存のマスターより件数が減りすぎていたら、理由を返す。問題なければNone。"""
+    if existing and len(names) < len(existing) * (1 - max_shrink):
+        return (
+            f"新しいマスターが {len(names)} 件で、既存の {len(existing)} 件より "
+            f"{max_shrink:.0%} 以上減っています。取得したデータが不完全な可能性があるため、書き換えません。"
+        )
+    return None
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--download-latest", action="store_true")
     parser.add_argument("--input", type=Path, help="手動取得したskills JSON")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
+        "--max-shrink", type=float, default=0.05,
+        help="既存より何割まで減ってよいか(既定 0.05)",
+    )
+    parser.add_argument(
+        "--allow-shrink", action="store_true",
+        help="件数が減る場合でも書き換える(スキルが本当に削除されたときだけ)",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="race_data.jsonのスキル名をマスターと照合する",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.check and not args.download_latest and not args.input:
         if not args.output.exists():
@@ -150,8 +172,22 @@ def main() -> int:
         print("スキル名を抽出できませんでした。JSONの形式を確認してください。", file=sys.stderr)
         return 1
 
+    existing: list[str] = []
+    if args.output.exists():
+        try:
+            existing = json.loads(args.output.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError:
+            existing = []
+    if not args.allow_shrink:
+        problem = shrink_error(existing, names, args.max_shrink)
+        if problem:
+            print(problem, file=sys.stderr)
+            return 1
+
     write_json(args.output, names)
-    print(f"{len(names)} 件のスキル名を {args.output} に書き出しました。")
+    added = len(set(names) - set(existing))
+    removed = len(set(existing) - set(names))
+    print(f"{len(names)} 件のスキル名を {args.output} に書き出しました。(追加 {added} / 削除 {removed})")
 
     if args.check:
         return check_against_master(set(names))
