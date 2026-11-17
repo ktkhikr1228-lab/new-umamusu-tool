@@ -24,6 +24,7 @@
 - 読み取りではコース・脚質タブ・見出しも読み、フォルダ(ホットキー設定)との食い違いを警告する。`auto_confirm = true` で多数決の結果を自動でOK/却下にする(既定はオフ)
 - 自動処理(`tools/guide_app/automation.py`、約60秒おきの見回り。どれも既定はオフ): `auto_extract = true` で撮影が止まって `auto_extract_idle_minutes` 分後に自動で読み取り(やり直しは30分あけて3回まで)、`auto_publish = true` で人が見る行が残っていない自動読み取り済みイベントの公開を自動で依頼(区分が変わる行があるときは人が依頼)、`discord_webhook_file` でDiscord通知。DBは毎日 `backups/guide-YYYYMMDD.sqlite3` にバックアップ(`backup_keep` 個)。全部オンでも **PRのマージは人**
 - スキルマスタとサイトの内容は、GitHub mainから5分おきに読み込む
+- スキルマスタは `update-skill-master.yml`(毎日)が自動で作り直す。追加だけで安全な変更は自動でマージされ、それ以外はPRが開いたまま人の確認を待つ(サポカのデータは別系統で、人がマージ)
 - 読み取りモデルは `tools/guide_app/config.toml` の `[[readers]]`(OpenAI互換API)。APIキーはラズパイ内のファイルに置き、リポジトリやチャットに出さない
 - アップロードGUI(8080)でGemini抽出したCSV(extracted/<イベント>/)も、5分おきに自動で取り込む
 - サイトの内容(mainの race_data.json)と比べるので、公開済みのスキルは見直し不要
